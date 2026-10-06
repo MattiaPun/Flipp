@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Runtime data (SQLite DB, WAL files, uploads)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test / tooling output
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Claude Code local-only files (shared CLAUDE.md files ARE committed)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
