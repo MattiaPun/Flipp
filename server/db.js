@@ -198,13 +198,20 @@ const migrations = [
    CREATE INDEX uploads_user ON uploads(user_id);
    CREATE TABLE push_subscriptions (endpoint TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
      p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at BIGINT NOT NULL);`,
+
+  // v3: rewards. One row per user per local day: XP, quest counters (JSON), whether a streak freeze covered the day
+  // and whether the day's 7-day milestone already paid out a freeze. users.freezes = freezes held (max 2).
+  `CREATE TABLE activity (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL,
+     xp INTEGER NOT NULL DEFAULT 0, stats TEXT NOT NULL DEFAULT '{}', frozen INTEGER NOT NULL DEFAULT 0,
+     freeze_earned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day));
+   ALTER TABLE users ADD COLUMN freezes INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 // Tables in foreign-key order (parents first). Used by backup/restore and data export.
 export const TABLES = [
   'settings', 'users', 'invites', 'courses', 'sets', 'cards', 'progress', 'stars', 'reviews', 'match_scores', 'course_prefs',
   'saved_courses', 'course_members', 'study_groups', 'group_members', 'group_courses', 'assignments', 'recovery_codes', 'passkeys',
-  'audit_log', 'uploads', 'push_subscriptions',
+  'audit_log', 'uploads', 'push_subscriptions', 'activity',
 ];
 
 await db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

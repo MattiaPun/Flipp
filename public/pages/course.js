@@ -58,6 +58,7 @@ export function Course({ me, id }) {
       <a class="btn" href=${`#/study?course=${id}&mode=flip`}>Flashcards</a>
       <a class="btn" href=${`#/study?course=${id}&mode=write`}>Write</a>
       <a class="btn" href=${`#/study?course=${id}&mode=test`}>Test</a>
+      <a class="btn" href=${`#/study?course=${id}&mode=survival`}>Survival</a>
       <a class="btn ghost" href=${`#/study?course=${id}&mode=cram`}>Cram</a>
     </div>`}
     <div class="section">

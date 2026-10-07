@@ -1,6 +1,7 @@
-// Home: greeting, streak/due/goal, courses; plus the course create/edit form.
+// Home: greeting, streak/XP/due/goal, daily quests, courses; plus the course create/edit form and the Quests list.
 import { html, useState } from '/vendor/htm-preact.js';
 import { api, useAsync, useSubmit, formData, Icon, Illustration } from '/ui.js';
+import { QUEST_XP } from '/lib.js';
 import { ImportCourseButton } from '/pages/transfer.js';
 
 export function Home({ me }) {
@@ -19,8 +20,9 @@ export function Home({ me }) {
       <h1>Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, ${me.user.name.split(' ')[0]}</h1>
       <p>${!s ? '\u00a0' : s.due ? `${s.due} card${s.due === 1 ? '' : 's'} due for review.` : s.today ? `All caught up. ${s.today} review${s.today === 1 ? '' : 's'} today.` : 'Nothing due right now.'}</p>
     </div>
-    <div class="stats">
-      <div class="stat flame"><b><${Icon} name="flame" size=${22} />${s ? s.streak : '–'}</b><span>day streak</span></div>
+    <div class="stats four">
+      <div class="stat flame"><b><${Icon} name="flame" size=${22} />${s ? s.streak : '–'}</b><span>day streak${s?.freezes ? html` · <span class="freeze" title="Streak freezes held. One covers a day you miss."><${Icon} name="snow" size=${12} /> ${s.freezes}</span>` : ''}</span></div>
+      <div class="stat xp"><b><${Icon} name="bolt" size=${22} />${s ? s.xp : '–'}</b><span>XP today</span></div>
       <div class="stat"><b><${Icon} name="cards" size=${22} />${s ? s.due : '–'}</b><span>cards due</span></div>
       <div class="stat"><b><${Icon} name="check" size=${22} />${s ? s.today : '–'}${s?.goal ? html`<small> / ${s.goal}</small>` : ''}</b><span>reviews today</span>
         ${goalPct !== null && html`<div class="progress thin" style="margin-top:8px"><i style=${{ width: goalPct + '%' }} /></div>`}</div>
@@ -28,6 +30,7 @@ export function Home({ me }) {
     ${s?.due > 0 && html`<div class="today">
       <div><b>Today's review</b><span>${s.due} card${s.due === 1 ? '' : 's'} · about ${Math.max(1, Math.round((s.due * 8) / 60))} min</span></div>
       <a class="btn primary lg" href="#/study?mode=learn">Start review</a></div>`}
+    ${s?.quests && html`<div class="panel quests-panel"><div class="section-title">Daily quests</div><${Quests} quests=${s.quests} /></div>`}
     <div class="quick-links">
       <a class="btn sm ghost" href="#/stats"><${Icon} name="chart" /> Statistics</a>
       <a class="btn sm ghost" href="#/library"><${Icon} name="book" /> Library</a>
@@ -88,3 +91,10 @@ export function CourseForm({ me, course, onSaved, onCancel }) {
     <div class="row"><button class="btn primary" disabled=${st.busy}>${course ? 'Save' : 'Create course'}</button>${onCancel && html`<button type="button" class="btn ghost" onClick=${onCancel}>Cancel</button>`}</div>
   </form>`;
 }
+
+// Daily quests with progress. `completed` (quest ids) highlights the ones a session just finished.
+export const Quests = ({ quests, completed = [] }) => html`<ul class="quests">${quests.map((q) => html`<li class=${`${q.done ? 'done' : ''} ${completed.includes(q.id) ? 'new' : ''}`}>
+  <span class="q-ico"><${Icon} name=${q.done ? 'check' : 'target'} size=${16} /></span>
+  <div class="grow"><div class="row between"><span>${q.label}</span><span class="small muted">${q.done ? (completed.includes(q.id) ? `+${QUEST_XP} XP` : 'Done') : `${q.progress} / ${q.goal}`}</span></div>
+    <div class="progress thin"><i style=${{ width: `${(q.progress / q.goal) * 100}%` }} /></div></div>
+</li>`)}</ul>`;

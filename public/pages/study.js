@@ -1,9 +1,13 @@
-// Study modes: Learn (spaced repetition), Flashcards, Write, Multiple choice, Cram, Match, Practice test.
+// Study modes: Learn (spaced repetition), Flashcards, Write, Multiple choice, Cram, Match, Practice test,
+// Survival, Listening, Speaking, and path lessons.
 import { html, useState, useEffect, useLayoutEffect, useRef, useMemo, useReducer } from '/vendor/htm-preact.js';
 import { api, useAsync, toast, feedback, confetti, speak, prefs, Md, Icon, Illustration } from '/ui.js';
-import { StudyQueue, grade, plain, shuffle, sides, charDiff } from '/lib.js';
+import { StudyQueue, grade, plain, shuffle, sides, charDiff, specialChars } from '/lib.js';
 import { preview } from '/srs.js';
 import { queueReview, unqueueReview, flushReviews } from '/offline.js';
+import { Quests } from '/pages/home.js';
+
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 export const MODES = {
   learn: { ico: 'repeat', title: 'Learn', sub: 'Spaced repetition', api: 'srs', records: true },
@@ -13,18 +17,26 @@ export const MODES = {
   cram: { ico: 'bolt', title: 'Cram', sub: 'Weakest first, no schedule', api: 'cram', records: false },
   match: { ico: 'grid', title: 'Match', sub: 'Beat the clock', api: 'all', records: false },
   test: { ico: 'clipboard', title: 'Practice test', sub: 'Mixed questions, scored', api: 'all', records: false },
+  survival: { ico: 'heart', title: 'Survival', sub: 'Three lives. How far can you get?', api: 'all', records: false },
+  listen: { ico: 'speaker', title: 'Listening', sub: 'Hear it, type it', api: 'all', records: false, dir: 'front' },
+  // Say the term: the definition is the prompt, so the answer is the side in the course's language.
+  speak: { ico: 'mic', title: 'Speaking', sub: 'Say it out loud', api: 'all', records: false, dir: 'back', hidden: !SpeechRec },
+  lesson: { ico: 'path', title: 'Lesson', sub: 'One unit of the path', api: 'all', records: true, hidden: true },
 };
+// Modes where the card is answered (typed, picked or spoken) instead of flipped; they play their own sound on check.
+const ANSWERED = new Set(['write', 'choice', 'listen', 'speak', 'lesson']);
 const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 
-// Entry: #/study?set=1|course=1|tag=x &mode=learn &dir=front|back|both &starred=1 &len=20 &min=10
+// Entry: #/study?set=1|course=1|tag=x &mode=learn &dir=front|back|both &starred=1 &len=20 &min=10 &unit=n (lesson)
 export function Study({ query }) {
   const mode = MODES[query.mode] ? query.mode : 'learn';
   const scope = query.set ? `set=${query.set}` : query.course ? `course=${query.course}` : query.tag ? `tag=${encodeURIComponent(query.tag)}` : '';
   const back = query.set ? `#/set/${query.set}` : query.course ? `#/course/${query.course}` : query.tag ? `#/tags` : '#/';
-  const dir = ['front', 'back', 'both'].includes(query.dir) ? query.dir : 'front';
+  const dir = MODES[mode].dir || (['front', 'back', 'both'].includes(query.dir) ? query.dir : 'front');
+  const unit = mode === 'lesson' && query.set && /^\d+$/.test(query.unit || '') ? `&unit=${query.unit}` : '';
   const { data, error, loading } = useAsync(
-    () => api(`/study?${scope}&mode=${MODES[mode].api}&dir=${dir}&shuffle=1${query.starred === '1' ? '&starred=1' : ''}`),
-    [scope, mode, dir, query.starred]);
+    () => api(`/study?${scope}&mode=${MODES[mode].api}&dir=${dir}&shuffle=1${unit}${query.starred === '1' ? '&starred=1' : ''}`),
+    [scope, mode, dir, unit, query.starred]);
   const [round, setRound] = useState({ n: 0, items: null });
   useEffect(() => { flushReviews(); }, []);
   // Stable identity: Session rebuilds its queue when `items` changes, so a fresh slice per render would reset it.
@@ -48,9 +60,10 @@ export function Study({ query }) {
     </div>`;
   }
   const restart = (subset) => setRound({ n: round.n + 1, items: subset || null });
-  const ctx = { w: data.w, configs: data.configs, back, mode, minutes: Number(query.min) || 0, setId: query.set };
+  const ctx = { w: data.w, configs: data.configs, back, mode, minutes: Number(query.min) || 0, setId: query.set, scope };
   if (mode === 'match') return html`<${Match} key=${round.n} items=${items} ctx=${ctx} restart=${() => restart()} />`;
   if (mode === 'test') return html`<${Test} key=${round.n} items=${items} ctx=${ctx} restart=${() => restart()} />`;
+  if (mode === 'survival') return html`<${Survival} key=${round.n} items=${items} ctx=${ctx} restart=${() => restart()} />`;
   return html`<${Session} key=${round.n} items=${items} ctx=${ctx} restart=${restart} />`;
 }
 
@@ -70,14 +83,21 @@ function choicesFor(item, pool) {
   return shuffle([{ text: right, correct: true }, ...wrong.map((text) => ({ text, correct: false }))]);
 }
 
+const distinctAnswers = (items) => new Set(items.map((i) => plain(sides(i, i.variant).expected).toLowerCase())).size;
+// What the learner has to produce. Listening asks for what was heard: the front, or the missing word of a cloze.
+const expectedFor = (item, mode) => (mode === 'listen' && item.type !== 'cloze' ? item.front : sides(item, item.variant).expected);
+
 function Session({ items, ctx, restart }) {
   const { mode } = ctx;
   const q = useMemo(() => new StudyQueue(items), [items]);
+  const keys = useMemo(() => specialChars(items.map((i) => expectedFor(i, mode))), [items]);
+  const canChoose = useMemo(() => distinctAnswers(items) >= 4, [items]);
   const [, tick] = useReducer((x) => x + 1, 0);
   const [flipped, setFlipped] = useState(false);
   const [started] = useState(Date.now());
   const [timeUp, setTimeUp] = useState(false);
   const [combo, setCombo] = useState(0);
+  const best = useRef(0);
   const [stars, setStars] = useState(() => new Map(items.map((c) => [c.id, !!c.starred])));
   const item = q.current;
 
@@ -106,9 +126,8 @@ function Session({ items, ctx, restart }) {
       });
     }
     q.answer(r >= 3, { p, item: cur, progress: cur.progress });
-    // Write/Choice already played their sound when the answer was checked.
-    if (mode !== 'write' && mode !== 'choice') feedback(r >= 3 ? 'good' : 'bad');
-    setCombo((c) => (r >= 3 ? c + 1 : 0));
+    if (!ANSWERED.has(mode)) feedback(r >= 3 ? 'good' : 'bad');
+    setCombo((c) => { const n = r >= 3 ? c + 1 : 0; best.current = Math.max(best.current, n); return n; });
     setFlipped(false);
     tick();
   };
@@ -144,7 +163,7 @@ function Session({ items, ctx, restart }) {
 
   // Layout effect, not effect: attached at commit, so a key pressed right as a card appears is never dropped.
   useLayoutEffect(() => {
-    if (mode === 'write' || mode === 'choice') return;
+    if (ANSWERED.has(mode)) return;
     const onKey = (e) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey || q.done || (timeUp && !flipped)) return;
       const k = e.key.toLowerCase();
@@ -160,13 +179,15 @@ function Session({ items, ctx, restart }) {
     return () => removeEventListener('keydown', onKey);
   });
 
-  if (q.done || (timeUp && !flipped)) return html`<${Summary} q=${q} started=${started} ctx=${ctx} restart=${restart} timeUp=${timeUp && !q.done} />`;
+  if (q.done || (timeUp && !flipped)) return html`<${Summary} q=${q} started=${started} ctx=${ctx} restart=${restart} timeUp=${timeUp && !q.done} combo=${best.current} />`;
   const pct = (q.finished / q.total) * 100;
   const left = new Set(q.q).size;
   const isStarred = stars.get(item.id);
   const intervals = mode === 'learn' && item.scheduled ? preview(item.progress, Date.now(), { w: ctx.w, config: ctx.configs[item.course_id] }) : null;
   const k = item.key + ':' + q.history.length;
   const common = { item, starred: isStarred, onStar: () => toggleStar(item), onBury: item.scheduled ? () => scheduleAction(item, 'bury') : null, onSuspend: item.scheduled ? () => scheduleAction(item, 'suspend') : null };
+  // Lessons start a card as multiple choice and switch to typing once it has been answered before.
+  const kind = mode === 'lesson' ? (canChoose && !(item.progress?.state > 0) ? 'choice' : 'write') : mode;
 
   return html`<div class="study">
     <div class="study-head">
@@ -176,8 +197,8 @@ function Session({ items, ctx, restart }) {
       <button class="btn ghost icon-btn" onClick=${undo} disabled=${!q.history.length} title="Undo (Z)" aria-label="Undo"><${Icon} name="undo" /></button>
     </div>
     <span class="small muted" style="text-align:center;margin-top:-8px">${MODES[mode].title} · ${q.finished} / ${q.total} done · ${left} left${ctx.minutes ? html` · <${Countdown} until=${started + ctx.minutes * 60_000} />` : ''}</span>
-    ${mode === 'write' ? html`<${Write} key=${k} ...${common} rate=${rate} undo=${undo} />`
-      : mode === 'choice' ? html`<${Choice} key=${k} ...${common} pool=${items} rate=${rate} undo=${undo} />`
+    ${kind === 'choice' ? html`<${Choice} key=${k} ...${common} pool=${items} rate=${rate} undo=${undo} />`
+      : ANSWERED.has(kind) ? html`<${Write} key=${k} ...${common} mode=${kind} keys=${keys} rate=${rate} undo=${undo} />`
       : html`
         <${Flashcard} key=${k} ...${common} flipped=${flipped} onFlip=${flip} onSwipe=${(d) => rate(d === 'right' ? 3 : 1)} />
         ${mode !== 'learn'
@@ -286,11 +307,12 @@ function Prompt({ item, ...tools }) {
 }
 
 // Recognition via the Web Speech API (Chrome/Safari). Calls onText with the best transcript.
-function useSpeech(lang, onText) {
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+function useSpeech(lang, onText, force) {
+  const Rec = SpeechRec;
   const [listening, setListening] = useState(false);
   const rec = useRef(null);
-  if (!Rec || !prefs.get('speech', false)) return null;
+  useEffect(() => () => rec.current?.abort(), []);
+  if (!Rec || (!force && !prefs.get('speech', false))) return null;
   const start = () => {
     if (listening) { rec.current?.stop(); return; }
     const r = new Rec();
@@ -307,19 +329,31 @@ function useSpeech(lang, onText) {
   return { listening, start };
 }
 
-function Write({ item, rate, undo, ...tools }) {
-  const { expected, answer } = sides(item, item.variant);
+// Typed answers. mode 'listen' plays the card and asks for what was heard; 'speak' answers with the microphone.
+function Write({ item, rate, undo, mode = 'write', keys = [], onCheck, ...tools }) {
+  const { prompt, answer } = sides(item, item.variant);
+  const listen = mode === 'listen', speaking = mode === 'speak';
+  const expected = expectedFor(item, mode);
   const [input, setInput] = useState('');
   const [hints, setHints] = useState(0);
   const [result, setResult] = useState(null);
-  const ref = useRef();
+  const ref = useRef(), audio = useRef();
   const target = plain(expected);
-  const speech = useSpeech(item.variant === 1 || item.type === 'cloze' ? item.lang : '', (t) => { setInput(t); ref.current?.focus(); });
-  useEffect(() => ref.current?.focus(), []);
-  const check = (giveUp) => {
-    const g = giveUp ? 'wrong' : grade(input, expected);
+  const speech = useSpeech(item.variant === 1 || item.type === 'cloze' ? item.lang : '', (t) => {
+    setInput(t);
+    if (speaking) check(false, t); else ref.current?.focus();
+  }, speaking);
+  // Listening: a recorded clip of the front when there is one, else text-to-speech (a cloze is read out whole).
+  const play = (slow) => {
+    if (item.audio && item.type !== 'cloze' && audio.current) { audio.current.playbackRate = slow ? 0.7 : 1; audio.current.currentTime = 0; audio.current.play(); }
+    else speak(item.type === 'cloze' ? answer : item.front, item.lang, slow ? 0.65 : 1);
+  };
+  useEffect(() => { if (listen) play(); if (!speaking) ref.current?.focus(); }, []);
+  const check = (giveUp, value = input) => {
+    const g = giveUp ? 'wrong' : grade(value, expected);
     setResult(g);
     feedback(g === 'wrong' ? 'bad' : 'good');
+    onCheck?.(g !== 'wrong');
   };
   const hint = () => {
     const n = Math.min(target.length, hints + 1);
@@ -327,39 +361,60 @@ function Write({ item, rate, undo, ...tools }) {
     setInput(target.slice(0, n));
     ref.current?.focus();
   };
+  // Tap-to-insert keys for letters the keyboard may not have; the caret stays where it was.
+  const insert = (ch) => {
+    const el = ref.current, a = el.selectionStart ?? input.length, b = el.selectionEnd ?? input.length;
+    setInput(input.slice(0, a) + ch + input.slice(b));
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(a + ch.length, a + ch.length); });
+  };
   // A correct answer that needed hints counts as "Hard", so it comes back sooner.
   const ratingFor = (g) => (g === 'wrong' ? 1 : hints > 0 ? 2 : 3);
   useLayoutEffect(() => {
-    if (!result) return;
     const onKey = (e) => {
+      if (!result) { if (listen && e.ctrlKey && e.key === ' ') { e.preventDefault(); play(); } return; }
       if (e.key === 'Enter') { e.preventDefault(); rate(ratingFor(result)); }
       else if (e.key.toLowerCase() === 'z' && !isTyping(e)) undo();
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [result]);
+  });
 
   return html`<div class="col pop">
-    <${Prompt} item=${item} ...${tools} />
+    ${listen
+      ? html`<div class="face static listen">
+          <span class="corner">${item.type === 'cloze' ? 'Fill in what you hear' : 'Type what you hear'}</span>
+          ${item.audio && item.type !== 'cloze' && html`<audio ref=${audio} src=${item.audio} preload="auto" />`}
+          <div class="row" style="justify-content:center">
+            <button class="btn primary listen-btn" onClick=${() => play(false)} aria-label="Play again"><${Icon} name="speaker" size=${30} /></button>
+            <button class="btn listen-btn slow" onClick=${() => play(true)} title="Play slowly">Slow</button>
+          </div>
+          ${item.type === 'cloze' && html`<${Md} src=${prompt} />`}
+          <span class="small faint listen-tip"><kbd>Ctrl</kbd> + <kbd>Space</kbd> plays it again</span>
+        </div>`
+      : html`<${Prompt} item=${item} ...${tools} />`}
     ${!result
       ? html`<form class="col" onSubmit=${(e) => { e.preventDefault(); check(false); }}>
+          ${speaking && speech && html`<button type="button" class="btn lg mic-btn ${speech.listening ? 'on' : ''}" onClick=${speech.start}>
+            <${Icon} name="mic" size=${24} /> ${speech.listening ? 'Listening… tap to stop' : 'Tap and say the answer'}</button>`}
           <div class="row" style="flex-wrap:nowrap">
-            <input class="input grow answer-input" ref=${ref} placeholder="Type the answer…" value=${input} onInput=${(e) => setInput(e.target.value)}
+            <input class="input grow answer-input" ref=${ref} placeholder=${speaking ? 'Or type it…' : 'Type the answer…'} value=${input} onInput=${(e) => setInput(e.target.value)}
               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Your answer" />
-            ${speech && html`<button type="button" class="btn icon-btn ${speech.listening ? 'primary' : ''}" style="height:48px;width:48px" onClick=${speech.start} title="Answer by speaking" aria-label="Answer by speaking"><${Icon} name="mic" /></button>`}
+            ${speech && !speaking && html`<button type="button" class="btn icon-btn ${speech.listening ? 'primary' : ''}" style="height:48px;width:48px" onClick=${speech.start} title="Answer by speaking" aria-label="Answer by speaking"><${Icon} name="mic" /></button>`}
           </div>
+          ${keys.length > 0 && html`<div class="char-keys" aria-label="Insert a letter">${keys.map((ch) => html`<button type="button" class="btn sm" onPointerDown=${(e) => e.preventDefault()} onClick=${() => insert(ch)}>${ch}</button>`)}</div>`}
           <div class="row">
             <button class="btn primary grow" type="submit">Check <kbd>↵</kbd></button>
             <button class="btn ghost" type="button" onClick=${hint} disabled=${hints >= target.length}>Hint${hints ? ` (${hints})` : ''}</button>
             <button class="btn ghost" type="button" onClick=${() => check(true)}>Don't know</button>
           </div>
+          ${speaking && html`<p class="small faint" style="text-align:center">Speech is recognized by your browser's provider (Google in Chrome, Apple in Safari).</p>`}
         </form>`
       : html`<div class="result pop ${result === 'exact' ? 'ok' : result === 'close' ? 'close' : 'bad'}">
           <div class="result-title">${result === 'exact' ? (hints ? 'Correct, with hints' : 'Correct') : result === 'close' ? 'Almost. Check the spelling' : input ? 'Incorrect' : 'The answer'}</div>
-          ${input && result !== 'exact' && html`<div class="small muted">You wrote:</div>
+          ${input && result !== 'exact' && html`<div class="small muted">${speaking ? 'You said:' : 'You wrote:'}</div>
             <div class="diff" aria-label="Your answer compared to the correct one">${charDiff(input, target).map((d) => html`<span class=${d.op}>${d.ch}</span>`)}</div>`}
           ${result !== 'exact' && html`<div class="small muted">Correct answer:</div>`}
-          <${Md} src=${answer} />
+          ${listen && item.type !== 'cloze' ? html`<${Md} src=${item.front} /><div class="small muted">Meaning:</div><${Md} src=${item.back} />` : html`<${Md} src=${answer} />`}
           <${Extras} item=${item} />
         </div>
         <div class="row">
@@ -369,7 +424,7 @@ function Write({ item, rate, undo, ...tools }) {
   </div>`;
 }
 
-function Choice({ item, pool, rate, undo, ...tools }) {
+function Choice({ item, pool, rate, undo, onCheck, ...tools }) {
   const options = useMemo(() => choicesFor(item, pool), [item.key]);
   const [picked, setPicked] = useState(null);
   const { answer } = sides(item, item.variant);
@@ -377,6 +432,7 @@ function Choice({ item, pool, rate, undo, ...tools }) {
     if (picked !== null) return;
     setPicked(i);
     feedback(options[i].correct ? 'good' : 'bad');
+    onCheck?.(options[i].correct);
   };
   useLayoutEffect(() => {
     const onKey = (e) => {
@@ -401,10 +457,25 @@ function Choice({ item, pool, rate, undo, ...tools }) {
   </div>`;
 }
 
-function Summary({ q, started, ctx, restart, timeUp }) {
-  const { data: stats } = useAsync(() => api('/stats'));
+// Records a finished session for XP and quests. Failing (offline) only costs the XP, never the session.
+function reportSession(mode, answered, correct, combo = 0) {
+  const n = Math.min(500, answered);
+  return n > 0
+    ? api('/activity', { method: 'POST', body: { mode, answered: n, correct: Math.min(n, Math.round(correct)), combo: Math.min(n, combo) } }).catch(() => null)
+    : Promise.resolve(null);
+}
+
+export const XpGain = ({ a }) => a && html`<div class="col xp-box pop">
+  <div class="xp-gain"><b>+${a.gained} XP</b><span>${a.xp} XP today${a.streak ? ` · ${a.streak}-day streak` : ''}</span></div>
+  ${a.freezeEarned && html`<p class="small" style="text-align:center"><${Icon} name="snow" size=${14} /> ${a.streak}-day streak: you earned a streak freeze. It covers a day you miss.</p>`}
+  <${Quests} quests=${a.quests} completed=${a.completed} />
+</div>`;
+
+function Summary({ q, started, ctx, restart, timeUp, combo }) {
   const answered = [...q.firstTry.keys()];
   const firstTry = [...q.firstTry.values()].filter(Boolean).length;
+  const { data } = useAsync(async () => ({ a: await reportSession(ctx.mode, answered.length, firstTry, combo), stats: await api('/stats').catch(() => null) }));
+  const stats = data?.stats;
   const missed = [...q.miss].sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ item: q.cards.get(id), n }));
   const mins = Math.max(1, Math.round((Date.now() - started) / 60000));
   const acc = answered.length ? Math.round((firstTry / answered.length) * 100) : 0;
@@ -413,7 +484,8 @@ function Summary({ q, started, ctx, restart, timeUp }) {
   return html`<div class="study pop">
     <div class="celebrate">
       <h1>${timeUp ? "Time's up" : 'Session complete'}</h1>
-      ${stats && html`<p class="muted" style="margin-top:6px">${stats.streak}-day streak · ${stats.today} reviews today${stats.goal ? ` · goal ${Math.min(stats.today, stats.goal)}/${stats.goal}` : ''}</p>`}</div>
+      ${stats && html`<p class="muted" style="margin-top:6px">${stats.today} reviews today${stats.goal ? ` · goal ${Math.min(stats.today, stats.goal)}/${stats.goal}` : ''}</p>`}</div>
+    <${XpGain} a=${data?.a} />
     <div class="stats">
       <div class="stat"><b><${Icon} name="cards" size=${22} />${answered.length}</b><span>cards</span></div>
       <div class="stat"><b><${Icon} name="target" size=${22} />${acc}%</b><span>right first time</span></div>
@@ -467,6 +539,8 @@ function Match({ items, ctx, restart }) {
         const ms = Math.round(performance.now() - start.current + penalty.current);
         setResult(ms);
         feedback('win');
+        const pairs = tiles.length / 2;
+        reportSession('match', pairs, Math.max(0, pairs - penalty.current / 1000)).then((a) => a && toast(`+${a.gained} XP`));
         if (ctx.setId) api(`/sets/${ctx.setId}/match`, { method: 'POST', body: { ms } }).then(board.reload, (e) => toast(e.message));
       }
     } else {
@@ -522,8 +596,9 @@ function Test({ items, ctx, restart }) {
   const score = done ? questions.filter(correct).length : 0;
   const submit = () => {
     setDone(true); scrollTo({ top: 0, behavior: 'smooth' });
-    const pct = questions.filter(correct).length / questions.length;
+    const right = questions.filter(correct).length, pct = right / questions.length;
     feedback(pct >= 0.6 ? 'win' : 'bad');
+    reportSession('test', questions.length, right).then((a) => a && toast(`+${a.gained} XP`));
     if (pct >= 0.9) confetti();
   };
 
@@ -552,5 +627,79 @@ function Test({ items, ctx, restart }) {
       </div>`;
     })}
     ${!done && html`<button class="btn primary lg" onClick=${submit}>Submit test (${Object.keys(answers).length}/${questions.length} answered)</button>`}
+  </div>`;
+}
+
+// Survival: endless questions against a shrinking clock. A miss or a timeout costs a life; three and it's over.
+// Starts with multiple choice, then mixes in typing. ponytail: best score lives in localStorage, per device.
+const LIVES = 3;
+const secondsFor = (score, kind) => Math.max(6, 18 - score * 0.5) + (kind === 'write' ? 6 : 0);
+
+function Survival({ items, ctx, restart }) {
+  const canChoose = useMemo(() => distinctAnswers(items) >= 4, [items]);
+  const keys = useMemo(() => specialChars(items.map((i) => expectedFor(i, 'write'))), [items]);
+  const deck = useRef([]);
+  const draw = (last) => {
+    if (!deck.current.length) deck.current = shuffle(items);
+    if (items.length > 1 && deck.current.at(-1).key === last?.key) deck.current.unshift(deck.current.pop()); // never the same card twice in a row
+    return deck.current.pop();
+  };
+  const [g, setG] = useState(() => ({ item: draw(null), n: 0, score: 0, lives: LIVES, combo: 0, best: 0, missed: [] }));
+  const [checked, setChecked] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const [over, setOver] = useState(null);
+  const bestKey = `survival.${ctx.scope}`;
+  const kind = canChoose && (g.score < 5 || g.n % 2 === 0) ? 'choice' : 'write';
+  const secs = secondsFor(g.score, kind);
+
+  const next = (correct) => {
+    const lives = g.lives - (correct ? 0 : 1), combo = correct ? g.combo + 1 : 0;
+    const n = { item: draw(g.item), n: g.n + 1, score: g.score + (correct ? 1 : 0), lives, combo, best: Math.max(g.best, combo), missed: correct ? g.missed : [...g.missed, g.item] };
+    setChecked(false); setTimedOut(false); setG(n);
+    if (lives > 0) return;
+    const prev = prefs.get(bestKey, 0);
+    if (n.score > prev) prefs.set(bestKey, n.score);
+    setOver({ prev });
+    feedback('win');
+    reportSession('survival', n.n, n.score, n.best).then((a) => setOver({ prev, a }));
+  };
+  // The clock is a timeout, not the CSS animation: reduced motion shortens animations to nothing.
+  useEffect(() => {
+    if (checked || over) return;
+    const t = setTimeout(() => { setTimedOut(true); setChecked(true); feedback('bad'); }, secs * 1000);
+    return () => clearTimeout(t);
+  }, [g.n, checked, over]);
+  useLayoutEffect(() => {
+    if (!timedOut) return;
+    const onKey = (e) => { if (e.key === 'Enter') { e.preventDefault(); next(false); } };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  });
+
+  if (over) {
+    const missed = [...new Map(g.missed.map((i) => [i.key, i])).values()];
+    return html`<div class="study pop">
+      <div class="celebrate"><h1>Game over</h1><div class="big" style="margin-top:10px">${g.score}</div>
+        <p class="muted" style="margin-top:8px">${g.score > over.prev ? (over.prev ? `New best. Previous best: ${over.prev}.` : 'Your first score on these cards.') : over.prev ? `Your best: ${over.prev}.` : 'No points this time. The first one is the hardest.'}</p></div>
+      <${XpGain} a=${over.a} />
+      ${missed.length > 0 && html`<div><div class="section-title">Missed</div>
+        <div class="panel" style="padding:0">${missed.map((item) => { const x = sides(item, item.variant); return html`<div class="cardrow"><${Md} src=${x.prompt} /><${Md} class="back" src=${x.answer} /></div>`; })}</div></div>`}
+      <div class="row" style="justify-content:center"><button class="btn primary lg" onClick=${restart}>Play again</button><a class="btn ghost" href=${ctx.back}>Done</a></div>
+    </div>`;
+  }
+  // A hinted answer (rating 2) still counts; only a miss costs a life.
+  const props = { key: g.n, item: g.item, rate: (r) => next(r >= 2), undo: () => {}, onCheck: () => setChecked(true) };
+  return html`<div class="study">
+    <div class="study-head">
+      <a class="btn ghost icon-btn" href=${ctx.back} title="Quit Survival" aria-label="Quit Survival"><${Icon} name="x" size=${22} /></a>
+      <div class="lives" aria-label=${`${g.lives} of ${LIVES} lives left`}>${Array.from({ length: LIVES }, (_, i) => html`<span class=${i < g.lives ? 'on' : ''}><${Icon} name="heart" size=${20} fill=${i < g.lives} /></span>`)}</div>
+      <div class="fuse ${checked ? 'paused' : ''}" key=${g.n} role="timer"><i style=${{ animationDuration: `${secs}s` }} /></div>
+      <span class="score" title="Score">${g.score}</span>
+    </div>
+    ${timedOut
+      ? html`<div class="col pop"><${Prompt} item=${g.item} />
+          <div class="result bad"><div class="result-title">Out of time</div><div class="small muted">Correct answer:</div><${Md} src=${sides(g.item, g.item.variant).answer} /></div>
+          <button class="btn lg again" onClick=${() => next(false)}>Continue <kbd>↵</kbd></button></div>`
+      : kind === 'choice' ? html`<${Choice} ...${props} pool=${items} />` : html`<${Write} ...${props} keys=${keys} />`}
   </div>`;
 }

@@ -3,6 +3,7 @@ import { html, useState, useRef, useEffect } from '/vendor/htm-preact.js';
 import { api, useAsync, useSubmit, formData, toast, Md, Icon, Modal, prefs } from '/ui.js';
 import { parseDelimited, clozeNumbers, plain } from '/lib.js';
 import { MODES } from '/pages/study.js';
+import { Path } from '/pages/path.js';
 
 const dupKey = (s) => plain(s).toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -67,7 +68,7 @@ export function SetPage({ id }) {
           <p class="small faint">${s.cards.length} cards${s.reverse ? ' · learned in both directions' : ''}</p></div>
           ${canEdit && html`<button class="btn sm" onClick=${() => setPanel('edit-set')}>Edit</button>`}</div>`}
 
-    ${s.cards.length > 0 && html`<${Launcher} set=${s} />`}
+    ${s.cards.length > 0 && html`<${Path} set=${s} /><${Launcher} set=${s} />`}
 
     <div class="section">
       <div class="row between" style="margin-bottom:12px">
@@ -103,13 +104,13 @@ function Launcher({ set }) {
   const starredCount = set.cards.filter((c) => c.starred).length;
   const url = (mode) => {
     const p = new URLSearchParams({ set: set.id, mode });
-    if (mode !== 'learn' && opts.dir !== 'front') p.set('dir', opts.dir);
+    if (mode !== 'learn' && !MODES[mode].dir && opts.dir !== 'front') p.set('dir', opts.dir);
     if (opts.starred && starredCount) p.set('starred', '1');
     if (opts.len) { const [k, v] = opts.len.split(':'); p.set(k, v); }
     return `#/study?${p}`;
   };
   return html`<div>
-    <div class="modes">${Object.entries(MODES).map(([m, x]) => html`<a class="mode" data-mode=${m} href=${url(m)}><span class="mode-ico"><${Icon} name=${x.ico} size=${20} /></span><b>${x.title}</b><span>${x.sub}</span></a>`)}</div>
+    <div class="modes">${Object.entries(MODES).filter(([, x]) => !x.hidden).map(([m, x]) => html`<a class="mode" data-mode=${m} href=${url(m)}><span class="mode-ico"><${Icon} name=${x.ico} size=${20} /></span><b>${x.title}</b><span>${x.sub}</span></a>`)}</div>
     <div class="row launcher-opts">
       <label class="field inline">Direction<select class="input compact" value=${opts.dir} onChange=${(e) => update({ dir: e.target.value })}>
         <option value="front">Term → definition</option><option value="back">Definition → term</option><option value="both">Both</option></select></label>

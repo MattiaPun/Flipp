@@ -19,6 +19,7 @@ const ORDER = {
   stars: 'user_id, card_id', reviews: 'id', match_scores: 'id', course_prefs: 'user_id, course_id', saved_courses: 'user_id, course_id',
   course_members: 'course_id, user_id', study_groups: 'id', group_members: 'group_id, user_id', group_courses: 'group_id, course_id',
   assignments: 'id', recovery_codes: 'user_id, code_hash', passkeys: 'id', audit_log: 'id', uploads: 'name', push_subscriptions: 'endpoint',
+  activity: 'user_id, day',
 };
 
 // Maintenance mode blocks all other API traffic while a restore rewrites the database.

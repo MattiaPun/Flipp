@@ -1,11 +1,11 @@
 // Studying: building queues, recording reviews (online + offline batches), undo, quick stats, leeches, match scores.
 import { Router } from 'express';
 import { db } from '../db.js';
-import { httpError, id, now, startOfDay, dayKey, tagList, json } from '../util.js';
+import { httpError, id, int, now, startOfDay, dayKey, tagList, json } from '../util.js';
 import { loadSet, loadCourse, loadCard, READABLE, readableParams, LISTED, listedParams } from '../access.js';
 import { schedule, weakFirst, STATE } from '../../public/srs.js';
-import { shuffle } from '../../public/lib.js';
-import { DUE, variantsOf, courseConfig, userWeights, userTz } from '../study-core.js';
+import { shuffle, sessionXp, addSession, dailyQuests, questStatus, QUEST_XP, UNIT_SIZE } from '../../public/lib.js';
+import { DUE, variantsOf, courseConfig, userWeights, userTz, streakFor, MAX_FREEZES } from '../study-core.js';
 
 export const studyRouter = Router();
 const LEARN_AHEAD = 20 * 60_000;
@@ -23,7 +23,7 @@ async function todayCounts(userId, tz) {
   return new Map(rows.map((r) => [r.course_id, { new: Number(r.new_n) || 0, rev: Number(r.rev_n) || 0 }]));
 }
 
-// GET /study?set=|course=|tag= &mode=srs|all|cram &dir=front|back|both &starred=1
+// GET /study?set=|course=|tag= &mode=srs|all|cram &dir=front|back|both &starred=1 &unit=n (with set)
 studyRouter.get('/study', async (req, res) => {
   const uid = req.user.id;
   const mode = ['srs', 'all', 'cram'].includes(req.query.mode) ? req.query.mode : 'srs';
@@ -40,7 +40,9 @@ studyRouter.get('/study', async (req, res) => {
     params = [...readableParams(req.user), uid];
   } else throw httpError(400, 'Pick a set, course or tag');
 
-  const cards = await db.all(`SELECT ${CARD_COLS} FROM cards k JOIN sets s ON s.id = k.set_id JOIN courses c ON c.id = s.course_id WHERE ${where} ORDER BY k.position, k.id`, uid, ...params);
+  let cards = await db.all(`SELECT ${CARD_COLS} FROM cards k JOIN sets s ON s.id = k.set_id JOIN courses c ON c.id = s.course_id WHERE ${where} ORDER BY k.position, k.id`, uid, ...params);
+  // Learning-path unit: the same slice pathUnits() shows on the set page.
+  if (req.query.set && req.query.unit !== undefined) { const u = int(req.query.unit, 0, 10_000); cards = cards.slice(u * UNIT_SIZE, (u + 1) * UNIT_SIZE); }
   const ids = cards.map((c) => c.id);
   const prog = ids.length
     ? await db.all(`SELECT p.card_id, ${PROG_COLS} FROM progress p WHERE p.user_id = ? AND p.card_id IN (${ids.join(',')})`, uid)
@@ -163,22 +165,56 @@ studyRouter.delete('/review/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Home-screen numbers: streak, reviews today, due now, daily goal.
+// Home-screen numbers: streak (spends freezes to save it), reviews today, due now, daily goal, XP and quests.
 studyRouter.get('/stats', async (req, res) => {
   const uid = req.user.id;
   const tz = await userTz(uid);
   const t = now();
-  const rows = await db.all('SELECT ts FROM reviews WHERE user_id = ? AND ts > ? ORDER BY ts DESC', uid, t - 400 * 86_400_000);
-  const days = new Set(rows.map((r) => dayKey(r.ts, tz)));
-  const key = (offset) => dayKey(t - offset * 86_400_000, tz);
-  let streak = 0;
-  for (let i = days.has(key(0)) ? 0 : 1; days.has(key(i)); i++) streak++;
-  const today = rows.filter((r) => r.ts >= startOfDay(t, tz)).length;
+  const { streak, days, today: day } = await streakFor(uid, tz, { spend: true });
+  const today = await db.get('SELECT COUNT(*) AS n FROM reviews WHERE user_id = ? AND ts >= ?', uid, startOfDay(t, tz));
   const due = await db.get(
     `SELECT COUNT(*) AS n FROM progress p JOIN cards k ON k.id = p.card_id JOIN sets s ON s.id = k.set_id JOIN courses c ON c.id = s.course_id
      WHERE p.user_id = ? AND ${DUE} AND ${READABLE}`, uid, t, t, ...readableParams(req.user));
-  const prefs = json((await db.get('SELECT prefs FROM users WHERE id = ?', uid)).prefs, {});
-  res.json({ streak, today, due: Number(due.n), studiedToday: days.has(key(0)), goal: prefs.dailyGoal || 0 });
+  const user = await db.get('SELECT prefs, freezes FROM users WHERE id = ?', uid);
+  const act = await db.get('SELECT xp, stats FROM activity WHERE user_id = ? AND day = ?', uid, day);
+  res.json({
+    streak, today: Number(today.n), due: Number(due.n), studiedToday: days.has(day), goal: json(user.prefs, {}).dailyGoal || 0,
+    xp: act?.xp || 0, freezes: Number(user.freezes), maxFreezes: MAX_FREEZES, quests: questStatus(dailyQuests(day, uid), json(act?.stats, {})),
+  });
+});
+
+const XP_MODES = ['learn', 'flip', 'write', 'choice', 'cram', 'match', 'test', 'survival', 'listen', 'speak', 'lesson'];
+
+// A finished session: adds XP and quest progress for today, and pays out a streak freeze every 7 days of streak.
+// ponytail: session results are client-reported (like match times), so XP is a personal score, not a trusted one.
+studyRouter.post('/activity', async (req, res) => {
+  const b = req.body || {};
+  if (!XP_MODES.includes(b.mode)) throw httpError(400, 'Unknown mode');
+  const answered = int(b.answered, 1, 500);
+  const s = { mode: b.mode, answered, correct: int(b.correct, 0, answered), combo: int(b.combo, 0, answered, 0) };
+  const uid = req.user.id;
+  const tz = await userTz(uid);
+  const day = dayKey(now(), tz);
+  const quests = dailyQuests(day, uid);
+  const out = await db.tx(async (tx) => {
+    // Insert-then-update takes the row lock on Postgres before the read, so concurrent sessions can't lose an update.
+    await tx.run('INSERT INTO activity (user_id, day) VALUES (?, ?) ON CONFLICT (user_id, day) DO NOTHING', uid, day);
+    await tx.run('UPDATE activity SET xp = xp WHERE user_id = ? AND day = ?', uid, day);
+    const row = await tx.get('SELECT xp, stats FROM activity WHERE user_id = ? AND day = ?', uid, day);
+    const before = json(row.stats, {}), after = addSession(before, s);
+    const was = questStatus(quests, before), now_ = questStatus(quests, after);
+    const completed = now_.filter((q, i) => q.done && !was[i].done);
+    const gained = sessionXp(s) + completed.length * QUEST_XP;
+    await tx.run('UPDATE activity SET xp = ?, stats = ? WHERE user_id = ? AND day = ?', row.xp + gained, JSON.stringify(after), uid, day);
+    return { gained, xp: row.xp + gained, quests: now_, completed: completed.map((q) => q.id) };
+  });
+  const { streak } = await streakFor(uid, tz);
+  let freezeEarned = false;
+  if (streak > 0 && streak % 7 === 0
+    && (await db.run('UPDATE activity SET freeze_earned = 1 WHERE user_id = ? AND day = ? AND freeze_earned = 0', uid, day)).changes) {
+    freezeEarned = (await db.run('UPDATE users SET freezes = freezes + 1 WHERE id = ? AND freezes < ?', uid, MAX_FREEZES)).changes > 0;
+  }
+  res.json({ ...out, streak, freezeEarned });
 });
 
 // Leeches: cards the user keeps forgetting.

@@ -113,10 +113,11 @@ export const Illustration = ({ size = 96 }) => html`<svg class="illus" viewBox="
   <g transform="rotate(-4 58 44)"><path d="M24 30h68" stroke="var(--brand)" stroke-width="1.5" /><path d="M32 40h40M32 48h52M32 56h30" stroke="var(--line-2)" stroke-width="1.5" stroke-linecap="round" /></g>
 </svg>`;
 
-export function speak(text, lang) {
+export function speak(text, lang, rate = 1) {
   if (!('speechSynthesis' in window)) return toast('Text-to-speech is not supported on this device');
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(plain(text));
+  u.rate = rate;
   if (lang) {
     u.lang = lang;
     const voice = speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
@@ -189,5 +190,8 @@ const paths = {
   target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   check: 'M20 6 9 17l-5-5',
+  heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z',
+  path: 'M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6',
+  snow: 'M12 2v20M4.9 6.5l14.2 11M4.9 17.5l14.2-11M9 4l3 2 3-2M9 20l3-2 3 2',
 };
 export const Icon = ({ name, fill, size = 18 }) => html`<svg viewBox="0 0 24 24" width=${size} height=${size} fill=${fill ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${paths[name]} /></svg>`;

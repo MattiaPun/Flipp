@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { schedule, weakFirst, preview, formatInterval, STATE, DEFAULT_W, model } from '../public/srs.js';
-import { StudyQueue, grade, levenshtein, parseDelimited, toCSV, clozeNumbers, renderCloze, sides, charDiff } from '../public/lib.js';
+import { StudyQueue, grade, levenshtein, parseDelimited, toCSV, clozeNumbers, renderCloze, sides, charDiff, specialChars, sessionXp, addSession, dailyQuests, questStatus, pathUnits, UNIT_SIZE } from '../public/lib.js';
 
 const DAY = 86_400_000, MIN = 60_000;
 process.env.DATA_DIR ||= fs.mkdtempSync(path.join(os.tmpdir(), 'flipp-unit-')); // storage.js opens the DB
@@ -103,6 +103,42 @@ test('cloze: numbers, rendering per variant, sides()', () => {
 test('charDiff marks wrong and missing characters', () => {
   const out = charDiff('helo', 'hello').map((d) => (d.op === 'ok' ? d.ch : `[${d.op}:${d.ch}]`)).join('');
   assert.equal(out, 'he[missing:l]lo');
+});
+
+test('specialChars: non-ASCII letters from answers, none for large scripts', () => {
+  assert.deepEqual(specialChars(['blå', 'gul', 'Äpple', 'smör', '**ö**']), ['å', 'ä', 'ö']);
+  assert.deepEqual(specialChars(['hello', '42 €']), []);
+  assert.deepEqual(specialChars(['あいうえおかきくけこさしすせそたちつ']), []);
+});
+
+test('rewards: session XP, daily counters, quests', () => {
+  assert.equal(sessionXp({ answered: 10, correct: 7, combo: 5 }), 7 * 2 + 3 + 2);
+  assert.equal(sessionXp({ answered: 5, correct: 5, combo: 5 }), 10 + 2 + 5); // clean-session bonus
+  let day = addSession({}, { mode: 'write', answered: 10, correct: 10, combo: 10 });
+  day = addSession(day, { mode: 'survival', answered: 14, correct: 12, combo: 6 });
+  assert.equal(day.cards, 24);
+  assert.equal(day.combo, 10);
+  assert.equal(day.perfect, 1);
+  assert.equal(day.survival, 12);
+  assert.deepEqual(day.modes, ['write', 'survival']);
+  const q = dailyQuests('2026-10-07', 1);
+  assert.equal(q.length, 3);
+  assert.equal(q[0].id, 'xp');
+  assert.equal(new Set(q.map((x) => x.id)).size, 3);
+  assert.deepEqual(dailyQuests('2026-10-07', 1), q); // stable per day + user
+  const st = questStatus(q, day);
+  assert.equal(st[0].done, day.xp >= 30);
+  assert.ok(st.every((x) => x.progress <= x.goal));
+});
+
+test('learning path: units open in order, done when every card was answered', () => {
+  const card = (state) => ({ progress: state == null ? [] : [{ state }] });
+  const cards = [...Array(UNIT_SIZE).fill(2).map(card), card(1), ...Array(UNIT_SIZE - 1).fill(null).map(card), card(null)];
+  const u = pathUnits(cards);
+  assert.equal(u.length, 3);
+  assert.deepEqual([u[0].done, u[0].mastered, u[0].open], [true, true, true]);
+  assert.deepEqual([u[1].seen, u[1].done, u[1].open], [1, false, true]);
+  assert.equal(u[2].open, false);
 });
 
 test('import/export: TSV, CSV with quotes, round trip', () => {

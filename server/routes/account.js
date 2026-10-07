@@ -218,6 +218,7 @@ accountRouter.get('/export', async (req, res) => {
     stars: await db.all('SELECT card_id FROM stars WHERE user_id = ?', uid),
     course_prefs: await db.all('SELECT course_id, prefs FROM course_prefs WHERE user_id = ?', uid),
     match_scores: await db.all('SELECT set_id, ms, created_at FROM match_scores WHERE user_id = ?', uid),
+    activity: await db.all('SELECT day, xp, stats, frozen FROM activity WHERE user_id = ?', uid),
     groups: await db.all('SELECT g.id, g.name, gm.role, gm.joined_at FROM group_members gm JOIN study_groups g ON g.id = gm.group_id WHERE gm.user_id = ?', uid),
     passkeys: await db.all('SELECT name, created_at, last_used FROM passkeys WHERE user_id = ?', uid),
   };

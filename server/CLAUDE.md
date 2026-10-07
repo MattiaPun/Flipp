@@ -7,7 +7,7 @@
 | `auth.js` | Sessions (with device metadata), scrypt passwords, signed tickets, AES-GCM `encrypt`, middleware (`requireUser` incl. forced 2FA setup), rate limiter, setup token |
 | `access.js` | `loadCourse/loadSet/loadCard` with `'read'|'edit'|'manage'`, SQL fragments `READABLE` / `LISTED` |
 | `util.js` | `httpError`, input validators, time-zone helpers (`dayKey`, `startOfDay`, `zonedParts`) |
-| `study-core.js` | Card variants, the `DUE` SQL fragment, per-course config, per-user FSRS weights and time zone |
+| `study-core.js` | Card variants, the `DUE` SQL fragment, per-course config, per-user FSRS weights and time zone, `streakFor` (streaks + freeze spending) |
 | `audit.js` · `quota.js` · `storage.js` · `branding.js` · `mailer.js` · `totp.js` | Audit log · quotas · upload sniffing + orphan cleanup · branding · SMTP · RFC 6238 |
 | `archive.js` · `backup.js` | Streaming tar.gz · portable backups and restore |
 | `optimizer.js` | FSRS weight fitting (worker thread) |

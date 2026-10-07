@@ -169,3 +169,79 @@ export class StudyQueue {
     this.q.splice(Math.min(gap, this.q.length), 0, id);
   }
 }
+
+// Letters beyond plain ASCII in a set's answers (å, ä, ö, é…), offered as tap-to-insert keys in Write.
+// More than 16 (e.g. a kana set) means the learner needs a real keyboard layout, not a key strip.
+export function specialChars(texts) {
+  const set = new Set();
+  for (const t of texts) for (const ch of plain(t).toLowerCase()) if (ch > '\x7f' && /\p{L}/u.test(ch)) set.add(ch);
+  return set.size > 16 ? [] : [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// ---------- Rewards: XP, daily quests ----------
+// XP for one finished session: 2 per first-try correct, 1 per other card, +2 per 5 in a row, +5 for a clean session of 5+.
+export function sessionXp({ answered = 0, correct = 0, combo = 0 }) {
+  const clean = answered >= 5 && correct === answered;
+  return correct * 2 + (answered - correct) + Math.floor(combo / 5) * 2 + (clean ? 5 : 0);
+}
+
+// Folds one session into the day's counters. `xp` here is session XP only, so quest bonuses can't complete the XP quest.
+export function addSession(day, s) {
+  return {
+    xp: (day.xp || 0) + sessionXp(s),
+    cards: (day.cards || 0) + s.answered,
+    combo: Math.max(day.combo || 0, s.combo),
+    perfect: (day.perfect || 0) + (s.answered >= 5 && s.correct === s.answered ? 1 : 0),
+    match: (day.match || 0) + (s.mode === 'match' ? 1 : 0),
+    modes: [...new Set([...(day.modes || []), s.mode])],
+    survival: Math.max(day.survival || 0, s.mode === 'survival' ? s.correct : 0),
+    listen: (day.listen || 0) + (s.mode === 'listen' ? s.correct : 0),
+  };
+}
+
+export const QUEST_XP = 10;
+export const QUESTS = [
+  { id: 'xp', label: 'Earn 30 XP', goal: 30, of: (d) => d.xp },
+  { id: 'cards', label: 'Answer 25 cards', goal: 25, of: (d) => d.cards },
+  { id: 'combo', label: 'Get 10 right in a row', goal: 10, of: (d) => d.combo },
+  { id: 'perfect', label: 'Finish a session with no mistakes', goal: 1, of: (d) => d.perfect },
+  { id: 'match', label: 'Finish a Match round', goal: 1, of: (d) => d.match },
+  { id: 'modes', label: 'Practice in 3 different modes', goal: 3, of: (d) => d.modes?.length },
+  { id: 'survival', label: 'Reach 10 in Survival', goal: 10, of: (d) => d.survival },
+  { id: 'listen', label: 'Get 10 right in Listening', goal: 10, of: (d) => d.listen },
+];
+
+// Three quests per user per day, the same on every device: always the XP quest, plus two picked by a hash of day + user.
+export function dailyQuests(day, userId) {
+  let h = 2166136261;
+  for (const ch of `${day}:${userId}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const rest = QUESTS.slice(1), out = [QUESTS[0]];
+  while (out.length < 3) {
+    h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0;
+    out.push(rest.splice(h % rest.length, 1)[0]);
+  }
+  return out;
+}
+
+export const questStatus = (quests, day) => quests.map((q) => {
+  const progress = Math.min(q.goal, Number(q.of(day)) || 0);
+  return { id: q.id, label: q.label, goal: q.goal, progress, done: progress >= q.goal };
+});
+
+// ---------- Learning path ----------
+// A set's cards in order, cut into units. A unit is done once every card in it has been answered at least once,
+// mastered once every card has graduated to review, and open once the unit before it is done.
+export const UNIT_SIZE = 8;
+export function pathUnits(cards) {
+  const units = [];
+  for (let i = 0; i < cards.length; i += UNIT_SIZE) {
+    const cs = cards.slice(i, i + UNIT_SIZE);
+    const seen = cs.filter((c) => c.progress?.some((p) => p.state > 0)).length;
+    units.push({
+      n: units.length, size: cs.length, seen, done: seen === cs.length,
+      mastered: cs.every((c) => c.progress?.length && c.progress.every((p) => p.state === 2)),
+      open: !units.length || units.at(-1).done,
+    });
+  }
+  return units;
+}

@@ -150,6 +150,52 @@ test('leech: repeated lapses suspend the card', async () => {
   await admin.put(`/api/courses/${state.course}/prefs`, {});
 });
 
+test('rewards: session XP, quests, learning-path units, streak freezes', async () => {
+  assert.equal((await admin.call('POST', '/api/activity', { mode: 'nope', answered: 5, correct: 5 })).status, 400);
+  assert.equal((await admin.call('POST', '/api/activity', { mode: 'write', answered: 0, correct: 0 })).status, 400);
+  assert.equal((await admin.call('POST', '/api/activity', { mode: 'write', answered: 3, correct: 4 })).status, 400);
+  const a = await admin.post('/api/activity', { mode: 'write', answered: 6, correct: 6, combo: 6 });
+  assert.ok(a.gained >= 12 + 2 + 5, 'XP for 6 clean answers');
+  assert.equal(a.xp, a.gained);
+  assert.equal(a.quests.length, 3);
+  const b = await admin.post('/api/activity', { mode: 'match', answered: 6, correct: 6 });
+  assert.equal(b.xp, a.xp + b.gained);
+  const stats = await admin.get('/api/stats');
+  assert.equal(stats.xp, b.xp);
+  assert.equal(stats.quests.length, 3);
+
+  // Unit 0 is the first UNIT_SIZE cards in set order (5 basic + one cloze with 2 deletions here).
+  assert.equal((await admin.get(`/api/study?set=${state.set}&mode=all&unit=0`)).items.length, 7);
+  assert.equal((await admin.get(`/api/study?set=${state.set}&mode=all&unit=1`)).items.length, 0);
+  assert.equal((await admin.call('GET', `/api/study?set=${state.set}&mode=all&unit=-1`)).status, 400);
+
+  const { db } = await import('../server/db.js');
+  const { streakFor, userTz } = await import('../server/study-core.js');
+  const { dayKey } = await import('../server/util.js');
+  const day = (o, tz = 'UTC') => dayKey(Date.now() - o * 86_400_000, tz);
+  // A 7-day streak pays out one freeze, once per day.
+  const me = (await db.get("SELECT id FROM users WHERE email = 'admin@x.io'")).id;
+  const tz = await userTz(me);
+  for (let o = 1; o <= 6; o++) await db.run('INSERT INTO activity (user_id, day, xp) VALUES (?, ?, 5) ON CONFLICT (user_id, day) DO NOTHING', me, day(o, tz));
+  const c = await admin.post('/api/activity', { mode: 'flip', answered: 1, correct: 1 });
+  assert.equal(c.streak, 7);
+  assert.ok(c.freezeEarned);
+  assert.ok(!(await admin.post('/api/activity', { mode: 'flip', answered: 1, correct: 1 })).freezeEarned);
+  assert.equal((await admin.get('/api/stats')).freezes, 1);
+
+  // A held freeze covers a missed yesterday; a two-day gap with one freeze is not covered.
+  const u = (await db.get("INSERT INTO users (email, name, created_at, freezes) VALUES ('freeze@x.io', 'F', ?, 1) RETURNING id", Date.now())).id;
+  for (const o of [2, 3]) await db.run('INSERT INTO activity (user_id, day, xp) VALUES (?, ?, 5)', u, day(o));
+  assert.equal((await streakFor(u, 'UTC')).streak, 0, 'nothing is spent without spend');
+  assert.equal((await streakFor(u, 'UTC', { spend: true })).streak, 3);
+  assert.equal((await db.get('SELECT freezes FROM users WHERE id = ?', u)).freezes, 0);
+  await db.run('DELETE FROM activity WHERE user_id = ? AND day IN (?, ?)', u, day(1), day(2));
+  await db.run('UPDATE users SET freezes = 1 WHERE id = ?', u);
+  assert.equal((await streakFor(u, 'UTC', { spend: true })).streak, 0);
+  assert.equal((await db.get('SELECT freezes FROM users WHERE id = ?', u)).freezes, 1);
+  await db.run('DELETE FROM users WHERE id = ?', u);
+});
+
 test('bulk actions, tags, search, reorder, CSV export', async () => {
   await admin.post('/api/cards/bulk', { ids: state.cards.slice(0, 2), action: 'tag', tag: 'Food Words' });
   const tags = await admin.get('/api/tags');

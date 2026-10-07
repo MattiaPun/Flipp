@@ -100,6 +100,35 @@ test('write mode: hints, diff, multiple choice, test, cram, match', async () => 
   await expect(page.locator('.mtile')).toHaveCount(12);
 });
 
+test('survival, listening, lesson, XP and daily quests', async () => {
+  await page.goto('/#/');
+  await page.getByRole('link', { name: /Swedish/ }).first().click();
+  await page.getByRole('link', { name: /Verbs/ }).click();
+  await page.locator('a.mode', { hasText: 'Survival' }).click();
+  await expect(page.locator('.lives .on')).toHaveCount(3);
+  // Answer "1" on choices and submit typed questions empty until the lives run out.
+  for (let i = 0; i < 60 && !(await page.locator('h1', { hasText: 'Game over' }).isVisible()); i++) {
+    if (await page.locator('.choice').first().isVisible()) await page.keyboard.press('1');
+    else if (await page.getByLabel('Your answer').isVisible()) await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: /Continue/ }).click();
+  }
+  await expect(page.locator('h1', { hasText: 'Game over' })).toBeVisible();
+  await expect(page.locator('.xp-gain')).toBeVisible();
+
+  await page.goto(page.url().replace('mode=survival', 'mode=listen'));
+  await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+  await page.getByLabel('Your answer').fill('nope');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.result')).toContainText('Meaning');
+
+  await page.goto(page.url().replace('mode=listen', 'mode=lesson') + '&unit=0');
+  await expect(page.getByText(/Lesson · 0 \//)).toBeVisible();
+
+  await page.goto('/#/');
+  await expect(page.getByText('Daily quests')).toBeVisible();
+  await expect(page.locator('.stat.xp b')).not.toHaveText('0');
+});
+
 test('stats, library, tags, leeches, groups pages render', async () => {
   for (const [hash, text] of [['#/stats', 'Activity'], ['#/library', 'Library'], ['#/tags', '#verbs'], ['#/leeches', 'No leeches'], ['#/groups', 'Groups']]) {
     await page.goto(`/${hash}`);
