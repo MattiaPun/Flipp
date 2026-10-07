@@ -77,6 +77,16 @@ Roles:
 - **Teacher:** everything a user can do, plus creating groups and assigning courses.
 - **Admin:** everything, plus instance administration. Admins can publish courses directly and edit any course.
 
+## Demo data
+
+Want something to click through? After the setup wizard, fill the instance with demo content:
+
+```bash
+docker compose exec -u node flipp node --disable-warning=ExperimentalWarning server/seed.js   # or: npm run seed
+```
+
+This adds 12 courses (including a very easy *Swedish for beginners*), a public library, two groups with assignments, and 60 days of review history for your admin account. It also creates 8 demo users with `@demo.flipp.test` emails and the password `demo1234`. Run it again with `--reset` to recreate the demo data; your own data is never touched. Don't run it on an instance real people use.
+
 ## Configuration
 
 All settings are environment variables. See [.env.example](.env.example) for the full list with comments.
