@@ -4,20 +4,22 @@ The frontend is plain ES modules with no build step. Preact and htm come from `/
 
 | File | Role |
 |---|---|
-| `app.js` | Hash router, auth screens, Home / Course / Set / Settings / Admin pages, `Shell` |
-| `study.js` | Study entry plus the Learn / Flashcards / Write / Match modes and the session summary |
-| `lib.js` | Pure shared logic: `StudyQueue`, `grade`, `levenshtein`, CSV parse/format, `shuffle`. No DOM, no Node APIs. Tested by `server/core.test.js` |
-| `ui.js` | `api()`, `useAsync`, prefs, theme, `toast`, `feedback` (sound/haptics), `speak` (TTS), `Md`, `Icon` |
+| `app.js` | Hash router, `Shell` (top bar, bottom nav, offline badge), ⌘K command palette, `App` (auth gate, forced 2FA setup) |
+| `ui.js` | `api()`, `useAsync`, `useSubmit`, `Modal` (native `<dialog>`), prefs, theme, `toast`, `feedback`, `speak`, `Md`, `Icon`, formatters |
+| `lib.js` | Pure shared logic: `StudyQueue`, `grade`, `charDiff`, cloze helpers, `sides`, CSV, `shuffle`. No DOM. |
+| `srs.js` | FSRS-6 scheduler + `preview()` (shared with the server) |
 | `md.js` | Markdown + KaTeX + DOMPurify |
-| `sw.js` | Service worker: precaches the app shell, serves other files stale-while-revalidate, never caches `/api` |
+| `offline.js` | Offline review queue (localStorage) and replay |
+| `sw.js` | Service worker: app shell, offline API cache, push notifications |
 | `theme.js` | Applies the saved theme before first paint (CSP forbids inline scripts) |
+| `pages/` | One module per screen: `auth`, `home`, `course`, `set` (editor, import, bulk), `study` (all modes), `stats`, `browse` (library, tags, leeches), `groups`, `settings`, `reminders`, `admin`, `backups`, `transfer` |
 
 ## Rules
 
 - **Components:** write them with htm tagged templates (`` html`<div>…</div>` ``), never JSX. Use hooks from the vendor bundle only.
 - **Server calls:** always use `api()`. It adds the CSRF header and fires the re-auth event on a 401.
-- **Routing:** hash routes look like `#/course/:id`, `#/set/:id`, `#/study?set=|course=&mode=learn|flip|write|match&starred=1`. Do not add a router library.
-- **Service worker:** when you add or rename a shell file, update `SHELL` in `sw.js` and bump `CACHE` (`flipp-vN`).
+- **Routing:** hash routes like `#/course/:id`, `#/set/:id`, `#/group/:id`, `#/study?set=|course=|tag=&mode=learn|flip|write|choice|cram|match|test&dir=&starred=1&len=|min=`. Do not add a router library.
+- **Service worker:** when you add or rename a module, add it to `SHELL` in `sw.js` and bump `CACHE` (`flipp-vN`). Only user-independent data and the endpoints listed in `OFFLINE_API` are cached; the API cache is cleared on sign-out.
 - **Inline scripts:** no `<script>` blocks and no inline event handler attributes in `index.html`, because the CSP blocks them.
 - **Card content:** render it through `<${Md} src=… />` and nothing else.
 
@@ -38,5 +40,7 @@ The frontend is plain ES modules with no build step. Preact and htm come from `/
 ## Study logic
 
 - **Ratings:** 1 Again, 2 Hard, 3 Good, 4 Easy. Anything ≥ 3 counts as correct in `StudyQueue`.
+- **Study items** are card × variant (`key = "cardId:variant"`; variant 0 front→back, 1 reverse, n = cloze number). Use `sides(item, item.variant)` for prompt/answer. Only `scheduled` items post reviews, and only in modes with `records: true`.
+- **Charts** are hand-written SVG following the dataviz rules: one sequential blue hue (`--series`, `--heat-*`), recessive grid, hover tooltip, a "Show as table" view, real pixel width (`useWidth`).
 - **Weak spots:** a missed card goes back into the queue 3–5 cards later and must be answered correctly twice. Do not weaken this.
 - **Keyboard shortcuts:** `Space` flips, `1`–`4` or `←`/`→` rate, `Z` undoes. Keep them consistent across modes.

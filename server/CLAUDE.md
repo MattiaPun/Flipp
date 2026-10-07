@@ -2,11 +2,19 @@
 
 | File | Role |
 |---|---|
-| `index.js` | Express app: security headers, CSRF gate, all non-auth routes, static/vendor serving, error handler |
-| `auth.js` | Sessions, scrypt passwords, local auth routes, OIDC (code + PKCE), rate limiter, `httpError` |
-| `db.js` | Async adapter `db.all/get/run/exec` over `node:sqlite` or `pg`; append-only `migrations`; `getSetting`/`setSetting` |
-| `srs.js` | FSRS-inspired `schedule(prev, rating, now)` and `weakFirst` sort |
-| `core.test.js` | Unit tests for srs + `public/lib.js` |
+| `index.js` | Express app: security headers, CSRF gate, maintenance gate, router mounting, branding-aware manifest, static/vendor serving, error handler |
+| `db.js` | Async adapter `db.all/get/run/exec/tx` over `node:sqlite` or `pg`; append-only `migrations`; `TABLES` (FK order); settings helpers |
+| `auth.js` | Sessions (with device metadata), scrypt passwords, signed tickets, AES-GCM `encrypt`, middleware (`requireUser` incl. forced 2FA setup), rate limiter, setup token |
+| `access.js` | `loadCourse/loadSet/loadCard` with `'read'|'edit'|'manage'`, SQL fragments `READABLE` / `LISTED` |
+| `util.js` | `httpError`, input validators, time-zone helpers (`dayKey`, `startOfDay`, `zonedParts`) |
+| `study-core.js` | Card variants, the `DUE` SQL fragment, per-course config, per-user FSRS weights and time zone |
+| `audit.js` · `quota.js` · `storage.js` · `branding.js` · `mailer.js` · `totp.js` | Audit log · quotas · upload sniffing + orphan cleanup · branding · SMTP · RFC 6238 |
+| `archive.js` · `backup.js` | Streaming tar.gz · portable backups and restore |
+| `optimizer.js` | FSRS weight fitting (worker thread) |
+| `jobs.js` | One-minute tick: daily maintenance, scheduled backups; other modules `registerJob` (reminders) |
+| `routes/` | `auth` (sign-in flows, OIDC, passkey login), `account`, `content`, `study`, `transfer` (exports, Anki), `uploads`, `groups`, `push`, `admin` |
+
+The scheduler itself lives in `public/srs.js` so the browser can preview intervals with the same code.
 
 ## Database
 
@@ -28,6 +36,7 @@
 
 ## Auth notes
 
-- Session cookie: `flipp_session` (HttpOnly, SameSite=Lax, Secure when `PUBLIC_URL` is https). The DB stores only `HMAC(JWT_SECRET, token)`.
-- Setup is atomic: the first `INSERT` into `settings('setup_done')` wins.
-- OIDC links a sign-in to an existing local account only when the provider sends `email_verified === true`.
+- Session cookie: `flipp_session` (HttpOnly, SameSite=Lax, Secure when `PUBLIC_URL` is https). The DB stores only `HMAC(JWT_SECRET, token)`. `sessions.method` records how the session was created (`password`, `totp`, `passkey`, `oidc`, `email`); "require 2FA for admins" restricts every session except `totp`, `passkey` and `oidc`.
+- Setup needs the setup token and is atomic: the first `INSERT` into `settings('setup_done')` wins.
+- Restore (`backup.js`) turns on maintenance mode and the process exits afterwards so secrets and caches reload; tests set `FLIPP_NO_LISTEN=1` to stay in-process.
+- OIDC links a sign-in to an existing local account only when the provider sends `email_verified === true`, and the link wipes that account's password, 2FA, passkeys and sessions (pre-registration takeover).
