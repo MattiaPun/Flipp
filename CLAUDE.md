@@ -25,7 +25,7 @@ Node version: ≥ 22.13, because the app uses the built-in `node:sqlite`. Docker
   2. Does the stdlib?
   3. Does an installed dependency?
 
-  Write new code only after that. Adding a dependency needs a real reason, written in the PR. Current runtime dependencies: `express`, `pg`, `htm`, `marked`, `dompurify`, `katex`, `@simplewebauthn/server` + `/browser` (passkeys), `nodemailer` (SMTP), `web-push` (reminders), `fflate` (Anki zip), `qrcode-generator` (2FA QR), `@fontsource-variable/nunito` (UI font, OFL-1.1, served as a separate file). Dev only: `@playwright/test`.
+  Write new code only after that. Adding a dependency needs a real reason, written in the PR. Current runtime dependencies: `express`, `pg`, `htm`, `marked`, `dompurify`, `katex`, `@simplewebauthn/server` + `/browser` (passkeys), `nodemailer` (SMTP), `web-push` (reminders), `fflate` (Anki zip), `qrcode-generator` (2FA QR), `@fontsource-variable/fraunces` + `@fontsource-variable/figtree` (UI fonts, OFL-1.1, served as separate files). Dev only: `@playwright/test`.
 - **One container, one process, one data folder.** No sidecars, no Redis, no separate frontend server.
 - **No build step.** The browser loads ES modules directly. Do not add a bundler, TypeScript, JSX, or a CSS preprocessor.
 - **Match the existing code.** Use the same naming, density, and comment style. Comments explain *why*, not *what*.

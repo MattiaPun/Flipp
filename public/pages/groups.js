@@ -179,6 +179,6 @@ function Challenge({ id }) {
     <p class="small muted">Most reviews this week (${fmtDate(d.weekStart)} – ${fmtDate(d.weekEnd - 1)}, ${d.timezone}). Resets every Monday.</p>
     <div class="panel" style="padding:0"><table class="list"><tbody>${d.members.map((m, i) => html`<tr style=${m.me ? 'font-weight:600' : ''}>
       <td style="width:40px">${m.reviews ? medals[i] || i + 1 : '–'}</td><td>${m.name}${m.me ? ' (you)' : ''}</td>
-      <td class="small muted">${m.streak ? `🔥 ${m.streak}` : ''}</td><td style="text-align:right">${m.reviews} reviews</td></tr>`)}</tbody></table></div>
+      <td class="small muted">${m.streak ? `${m.streak}-day streak` : ''}</td><td style="text-align:right">${m.reviews} reviews</td></tr>`)}</tbody></table></div>
   </div>`;
 }

@@ -93,10 +93,10 @@ export function feedback(kind) {
 }
 
 // A burst of CSS confetti; cleans itself up.
-export function confetti(n = 90) {
+export function confetti(n = 60) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const box = Object.assign(document.createElement('div'), { className: 'confetti' });
-  const colors = ['var(--brand)', 'var(--good)', 'var(--pink)', 'var(--star)', 'var(--blue)', 'var(--warn)'];
+  const colors = ['var(--brand)', 'var(--good)', 'var(--blue)', 'var(--star)', 'var(--plum)'];
   for (let i = 0; i < n; i++) {
     const p = document.createElement('i');
     p.style.cssText = `left:${Math.random() * 100}%;background:${colors[i % colors.length]};--x:${(Math.random() - 0.5) * 240}px;--r:${(Math.random() - 0.5) * 1440}deg;--d:${Math.random() * 0.5}s;--t:${1.6 + Math.random() * 1.4}s;${Math.random() < 0.3 ? 'border-radius:50%;height:9px' : ''}`;
@@ -106,29 +106,12 @@ export function confetti(n = 90) {
   setTimeout(() => box.remove(), 3600);
 }
 
-// Flipp the card mascot. Moods: happy, cheer, sleepy, sad.
-export function Mascot({ mood = 'happy', size = 72, class: cls = '' }) {
-  const eyes = mood === 'sleepy'
-    ? html`<path d="M30 46q6 5 12 0M58 46q6 5 12 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`
-    : html`<ellipse cx="36" cy="45" rx="7" ry="9" fill="#fff" /><ellipse cx="64" cy="45" rx="7" ry="9" fill="#fff" />
-        <circle cx=${mood === 'sad' ? 36 : 38} cy=${mood === 'sad' ? 49 : 46} r="4" fill="#1d1b3a" /><circle cx=${mood === 'sad' ? 64 : 66} cy=${mood === 'sad' ? 49 : 46} r="4" fill="#1d1b3a" />
-        <circle cx="39.5" cy="43" r="1.4" fill="#fff" /><circle cx="67.5" cy="43" r="1.4" fill="#fff" />`;
-  const mouth = {
-    happy: html`<path d="M40 62q10 9 20 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`,
-    cheer: html`<path d="M38 59q12 2 24 0q-2 14-12 14t-12-14z" fill="#1d1b3a" /><path d="M44 68q6 4 12 0" fill="#ff7aa8" />`,
-    sleepy: html`<ellipse cx="50" cy="64" rx="5" ry="4" fill="#1d1b3a" />`,
-    sad: html`<path d="M41 67q9-8 18 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`,
-  }[mood];
-  return html`<span class="mascot ${cls}" aria-hidden="true"><svg viewBox="0 0 100 100" width=${size} height=${size}>
-    <rect x="22" y="20" width="62" height="72" rx="14" fill="var(--pink)" transform="rotate(12 53 56)" />
-    <rect x="16" y="14" width="66" height="76" rx="15" fill="var(--brand)" transform="rotate(-6 49 52)" />
-    <rect x="22" y="20" width="22" height="7" rx="3.5" fill="#fff" opacity=".28" transform="rotate(-6 49 52)" />
-    <circle cx="27" cy="58" r="5" fill="#ff7aa8" opacity=".55" /><circle cx="73" cy="58" r="5" fill="#ff7aa8" opacity=".55" />
-    ${eyes}${mouth}
-    ${mood === 'cheer' && html`<path d="M10 30l6 4M8 44h7M90 30l-6 4M92 44h-7" stroke="var(--star)" stroke-width="4" stroke-linecap="round" />`}
-    ${mood === 'sleepy' && html`<text x="78" y="22" font-size="18" font-weight="900" fill="var(--muted)" font-family="var(--font)">z</text>`}
-  </svg></span>`;
-}
+// Empty-state illustration: a loose stack of index cards in the theme's colors.
+export const Illustration = ({ size = 96 }) => html`<svg class="illus" viewBox="0 0 120 90" width=${size} height=${size * 0.75} aria-hidden="true">
+  <rect x="30" y="16" width="68" height="48" rx="4" fill="var(--panel-2)" stroke="var(--line-2)" stroke-width="1.5" transform="rotate(9 64 40)" />
+  <rect x="24" y="20" width="68" height="48" rx="4" fill="var(--panel)" stroke="var(--line-2)" stroke-width="1.5" transform="rotate(-4 58 44)" />
+  <g transform="rotate(-4 58 44)"><path d="M24 30h68" stroke="var(--brand)" stroke-width="1.5" /><path d="M32 40h40M32 48h52M32 56h30" stroke="var(--line-2)" stroke-width="1.5" stroke-linecap="round" /></g>
+</svg>`;
 
 export function speak(text, lang) {
   if (!('speechSynthesis' in window)) return toast('Text-to-speech is not supported on this device');
@@ -196,5 +179,15 @@ const paths = {
   key: 'M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4',
   bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
   pause: 'M6 4h4v16H6zM14 4h4v16h-4z',
+  flame: 'M12 22c3.9 0 7-2.9 7-7 0-3.6-2.3-5.6-3.7-8.5-.5 1.8-1.5 3-2.8 3.6C12.8 7.4 11.6 4.6 9.5 2 8.7 6.3 5 8.9 5 15c0 4.1 3.1 7 7 7z',
+  cards: 'M8 4h11a1 1 0 0 1 1 1v11M4 8h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z',
+  repeat: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
+  pencil: 'M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4zM14 6l3 3',
+  list: 'M10 6h10M10 12h10M10 18h10M4 6l1.2 1.2L7.5 5M4 12l1.2 1.2L7.5 11M4 18l1.2 1.2L7.5 17',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  clipboard: 'M9 3h6v3H9zM9 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-3M9 12h6M9 16h4',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  check: 'M20 6 9 17l-5-5',
 };
 export const Icon = ({ name, fill, size = 18 }) => html`<svg viewBox="0 0 24 24" width=${size} height=${size} fill=${fill ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${paths[name]} /></svg>`;

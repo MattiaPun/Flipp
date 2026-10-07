@@ -78,7 +78,7 @@ app.get('/manifest.webmanifest', async (_req, res) => {
   if (b.logo) icons.unshift({ src: b.logo, sizes: 'any', purpose: 'any' });
   res.type('application/manifest+json').set('Cache-Control', 'no-cache').send(JSON.stringify({
     name: b.name, short_name: b.name.slice(0, 12), description: 'Playful, self-hosted flashcards with spaced repetition.',
-    start_url: '/', scope: '/', display: 'standalone', orientation: 'any', background_color: '#14132b', theme_color: '#7c5cff', icons,
+    start_url: '/', scope: '/', display: 'standalone', orientation: 'any', background_color: '#f7f3ea', theme_color: '#e8492a', icons,
   }));
 });
 app.get('/branding.css', async (_req, res) => {
@@ -99,7 +99,8 @@ app.get('/icons/apple-touch-icon.png', async (req, res, next) => {
 const vendor = { 'htm-preact.js': 'htm/preact/standalone.module.js', 'marked.js': 'marked/lib/marked.esm.js', 'purify.js': 'dompurify/dist/purify.es.mjs' };
 for (const [name, file] of Object.entries(vendor)) app.get(`/vendor/${name}`, (_req, res) => res.sendFile(path.join(NM, file), { maxAge: '7d' }));
 app.use('/vendor/katex', express.static(path.join(NM, 'katex/dist'), { maxAge: '7d' }));
-app.use('/vendor/nunito', express.static(path.join(NM, '@fontsource-variable/nunito'), { maxAge: '7d' }));
+app.use('/vendor/fraunces', express.static(path.join(NM, '@fontsource-variable/fraunces'), { maxAge: '7d' }));
+app.use('/vendor/figtree', express.static(path.join(NM, '@fontsource-variable/figtree'), { maxAge: '7d' }));
 app.use('/vendor/webauthn', express.static(path.join(NM, '@simplewebauthn/browser/esm'), { maxAge: '7d' }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '365d', immutable: true, index: false, dotfiles: 'deny' }));
 app.use(express.static(path.join(ROOT, 'public'), { setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
