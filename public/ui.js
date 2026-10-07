@@ -63,26 +63,71 @@ export function toast(msg) {
 }
 
 // Tactile feedback: tiny synthesized sounds (no audio files) + vibration where supported.
+// Sounds only ever play in response to a tap or key press, so autoplay rules are never an issue.
 let audio;
+const TONES = {
+  flip: [[520, 0.035, 'triangle']],
+  good: [[784, 0.07], [1175, 0.12]], // G5 → D6: a bright "ding-ding"
+  bad: [[262, 0.09, 'square', 0.05], [196, 0.16, 'square', 0.05]],
+  win: [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.22]], // C major arpeggio
+  pop: [[880, 0.04, 'triangle']],
+};
 export function feedback(kind) {
-  if (prefs.get('haptics', true)) navigator.vibrate?.(kind === 'bad' ? [12, 40, 12] : 8);
-  if (!prefs.get('sound', false)) return;
+  if (prefs.get('haptics', true)) navigator.vibrate?.(kind === 'bad' ? [12, 40, 12] : kind === 'win' ? [10, 30, 10, 30, 20] : 8);
+  if (!prefs.get('sound', true)) return;
   try {
     audio ||= new AudioContext();
-    const tones = { flip: [[520, 0.03]], good: [[660, 0.06], [880, 0.08]], bad: [[220, 0.12]] }[kind] || [];
     let t = audio.currentTime;
-    for (const [freq, dur] of tones) {
+    for (const [freq, dur, type = 'sine', vol = 0.13] of TONES[kind] || []) {
       const o = audio.createOscillator(), g = audio.createGain();
-      o.type = kind === 'flip' ? 'triangle' : 'sine';
+      o.type = type;
       o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.12, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g).connect(audio.destination);
       o.start(t); o.stop(t + dur + 0.02);
-      t += dur;
+      t += dur * 0.8;
     }
   } catch {}
+}
+
+// A burst of CSS confetti; cleans itself up.
+export function confetti(n = 90) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = Object.assign(document.createElement('div'), { className: 'confetti' });
+  const colors = ['var(--brand)', 'var(--good)', 'var(--pink)', 'var(--star)', 'var(--blue)', 'var(--warn)'];
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    p.style.cssText = `left:${Math.random() * 100}%;background:${colors[i % colors.length]};--x:${(Math.random() - 0.5) * 240}px;--r:${(Math.random() - 0.5) * 1440}deg;--d:${Math.random() * 0.5}s;--t:${1.6 + Math.random() * 1.4}s;${Math.random() < 0.3 ? 'border-radius:50%;height:9px' : ''}`;
+    box.append(p);
+  }
+  document.body.append(box);
+  setTimeout(() => box.remove(), 3600);
+}
+
+// Flipp the card mascot. Moods: happy, cheer, sleepy, sad.
+export function Mascot({ mood = 'happy', size = 72, class: cls = '' }) {
+  const eyes = mood === 'sleepy'
+    ? html`<path d="M30 46q6 5 12 0M58 46q6 5 12 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`
+    : html`<ellipse cx="36" cy="45" rx="7" ry="9" fill="#fff" /><ellipse cx="64" cy="45" rx="7" ry="9" fill="#fff" />
+        <circle cx=${mood === 'sad' ? 36 : 38} cy=${mood === 'sad' ? 49 : 46} r="4" fill="#1d1b3a" /><circle cx=${mood === 'sad' ? 64 : 66} cy=${mood === 'sad' ? 49 : 46} r="4" fill="#1d1b3a" />
+        <circle cx="39.5" cy="43" r="1.4" fill="#fff" /><circle cx="67.5" cy="43" r="1.4" fill="#fff" />`;
+  const mouth = {
+    happy: html`<path d="M40 62q10 9 20 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`,
+    cheer: html`<path d="M38 59q12 2 24 0q-2 14-12 14t-12-14z" fill="#1d1b3a" /><path d="M44 68q6 4 12 0" fill="#ff7aa8" />`,
+    sleepy: html`<ellipse cx="50" cy="64" rx="5" ry="4" fill="#1d1b3a" />`,
+    sad: html`<path d="M41 67q9-8 18 0" stroke="#1d1b3a" stroke-width="4" fill="none" stroke-linecap="round" />`,
+  }[mood];
+  return html`<span class="mascot ${cls}" aria-hidden="true"><svg viewBox="0 0 100 100" width=${size} height=${size}>
+    <rect x="22" y="20" width="62" height="72" rx="14" fill="var(--pink)" transform="rotate(12 53 56)" />
+    <rect x="16" y="14" width="66" height="76" rx="15" fill="var(--brand)" transform="rotate(-6 49 52)" />
+    <rect x="22" y="20" width="22" height="7" rx="3.5" fill="#fff" opacity=".28" transform="rotate(-6 49 52)" />
+    <circle cx="27" cy="58" r="5" fill="#ff7aa8" opacity=".55" /><circle cx="73" cy="58" r="5" fill="#ff7aa8" opacity=".55" />
+    ${eyes}${mouth}
+    ${mood === 'cheer' && html`<path d="M10 30l6 4M8 44h7M90 30l-6 4M92 44h-7" stroke="var(--star)" stroke-width="4" stroke-linecap="round" />`}
+    ${mood === 'sleepy' && html`<text x="78" y="22" font-size="18" font-weight="900" fill="var(--muted)" font-family="var(--font)">z</text>`}
+  </svg></span>`;
 }
 
 export function speak(text, lang) {

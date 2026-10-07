@@ -1,6 +1,6 @@
 // Home: greeting, streak/due/goal, courses; plus the course create/edit form.
 import { html, useState } from '/vendor/htm-preact.js';
-import { api, useAsync, useSubmit, formData, Icon } from '/ui.js';
+import { api, useAsync, useSubmit, formData, Icon, Mascot } from '/ui.js';
 import { ImportCourseButton } from '/pages/transfer.js';
 
 export function Home({ me }) {
@@ -14,14 +14,19 @@ export function Home({ me }) {
   const goalPct = s?.goal ? Math.min(100, Math.round((s.today / s.goal) * 100)) : null;
 
   return html`<div class="stack">
-    <h1>Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, ${me.user.name}</h1>
-    <div class="stats">
-      <div class="stat"><b>${s ? s.streak : '–'}${s?.streak ? ' 🔥' : ''}</b><span>day streak</span></div>
-      <div class="stat"><b>${s ? s.due : '–'}</b><span>cards due</span></div>
-      <div class="stat"><b>${s ? s.today : '–'}${s?.goal ? html`<small class="muted"> / ${s.goal}</small>` : ''}</b><span>reviews today</span>
-        ${goalPct !== null && html`<div class="progress" style="margin-top:8px"><i style=${{ width: goalPct + '%' }} /></div>`}</div>
+    <div class="hello">
+      <${Mascot} mood=${s && !s.due && s.today ? 'cheer' : 'happy'} size=${64} class="wiggle" />
+      <div><h1>Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, ${me.user.name.split(' ')[0]}!</h1>
+        <p>${!s ? '' : s.due ? "Your cards miss you. Let's go!" : s.today ? 'All caught up. Brilliant work today ✨' : 'Ready to learn something new?'}</p></div>
     </div>
-    ${s?.due > 0 && html`<a class="btn primary lg" style="width:100%" href="#/study?mode=learn">Review ${s.due} due card${s.due === 1 ? '' : 's'}</a>`}
+    <div class="stats">
+      <div class="stat flame"><b><span class="ico">${s?.streak ? '🔥' : '🪵'}</span>${s ? s.streak : '–'}</b><span>day streak</span></div>
+      <div class="stat"><b><span class="ico">🃏</span>${s ? s.due : '–'}</b><span>cards due</span></div>
+      <div class="stat good"><b><span class="ico">⚡</span>${s ? s.today : '–'}${s?.goal ? html`<small class="muted"> / ${s.goal}</small>` : ''}</b><span>reviews today</span>
+        ${goalPct !== null && html`<div class="progress thin" style="margin-top:8px"><i style=${{ width: goalPct + '%' }} /></div>`}</div>
+    </div>
+    ${s?.due > 0 && html`<a class="cta pop" href="#/study?mode=learn"><span style="font-size:34px">🧠</span>
+      <div><b>${s.due} card${s.due === 1 ? '' : 's'} ready for review</b><span>A few minutes keeps them fresh</span></div><span class="go">Start</span></a>`}
     <div class="quick-links">
       <a class="btn sm ghost" href="#/stats"><${Icon} name="chart" /> Statistics</a>
       <a class="btn sm ghost" href="#/library"><${Icon} name="book" /> Library</a>
@@ -41,7 +46,7 @@ export function Home({ me }) {
       ${creating && html`<div style="margin-bottom:12px"><${CourseForm} me=${me} onSaved=${(r) => { location.hash = `#/course/${r.id}`; }} onCancel=${() => setCreating(false)} /></div>`}
       ${courses.error && html`<p class="error">${courses.error.message}</p>`}
       ${courses.data && !courses.data.length && !creating && html`<div class="panel empty">
-        <div style="font-size:32px">🗂️</div><h2 style="margin-top:8px">No courses yet</h2>
+        <${Mascot} mood="happy" size=${84} /><h2 style="margin-top:8px">No courses yet</h2>
         <p class="muted" style="margin:6px 0 16px">A course groups related sets, like "Swedish A1" or "System Design". Create one, or pick one from the library.</p>
         <div class="row" style="justify-content:center"><button class="btn primary" onClick=${() => setCreating(true)}>Create a course</button><a class="btn" href="#/library">Browse the library</a></div></div>`}
       <div class="grid">${list.map((c) => html`<${CourseTile} c=${c} />`)}</div>
@@ -49,7 +54,9 @@ export function Home({ me }) {
   </div>`;
 }
 
-export const CourseTile = ({ c, extra }) => html`<a class="tile" href=${`#/course/${c.id}`}>
+// Stable, well-spread hue per course (golden angle) so every tile gets its own color.
+const hue = (id) => Math.round((Number(id) * 137.508) % 360);
+export const CourseTile = ({ c, extra }) => html`<a class="tile" href=${`#/course/${c.id}`} style=${{ '--hue': hue(c.id) }}>
   <div class="row between"><span class="emoji">${c.icon || '📚'}</span>${c.due_count > 0 && html`<span class="badge">${c.due_count} due</span>`}${c.featured ? html`<span class="tag">★ Featured</span>` : ''}</div>
   <h3>${c.title}</h3>
   <p class="small muted">${c.set_count} set${c.set_count == 1 ? '' : 's'} · ${c.card_count} cards${c.visibility === 'public' ? ' · Public' : ''}${!c.owned && c.owner_name ? ` · by ${c.owner_name}` : ''}${c.member_role ? ` · shared (${c.member_role})` : ''}</p>

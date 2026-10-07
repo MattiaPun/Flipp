@@ -1,6 +1,6 @@
 // Library (public courses), tags overview, leeches list.
 import { html, useState } from '/vendor/htm-preact.js';
-import { api, useAsync, toast, Md } from '/ui.js';
+import { api, useAsync, toast, Md, Mascot } from '/ui.js';
 import { CourseTile } from '/pages/home.js';
 import { sides } from '/lib.js';
 
@@ -21,7 +21,7 @@ export function Library() {
       <input class="input grow" style="width:auto" type="search" placeholder="Search courses…" value=${q} onInput=${(e) => setQ(e.target.value)} />
       <button class="btn">Search</button>
     </form>
-    ${list.data && !list.data.length && html`<p class="muted">${query ? 'No matching courses.' : 'No public courses yet. Course owners can request publication from their course page.'}</p>`}
+    ${list.data && !list.data.length && html`<div class="panel empty"><${Mascot} mood=${query ? 'sad' : 'sleepy'} size=${84} /><p class="muted">${query ? 'No matching courses.' : 'No public courses yet. Course owners can request publication from their course page.'}</p></div>`}
     <div class="grid">${(list.data || []).map((c) => html`<${CourseTile} c=${{ ...c, owned: c.owned }} extra=${html`
       ${c.description && html`<p class="small muted clamp2" style="margin-top:6px">${c.description}</p>`}
       <div class="row" style="margin-top:10px" onClick=${(e) => e.preventDefault()}>
@@ -55,7 +55,7 @@ export function Leeches() {
   return html`<div class="stack">
     <h1>Leeches</h1>
     <p class="muted">Cards you've forgotten many times. They're often too long or ambiguous — rewrite or split them, add a mnemonic, then put them back.</p>
-    ${list.data && !list.data.length && html`<div class="panel empty"><div style="font-size:32px">🌱</div><p class="muted">No leeches. Nice.</p></div>`}
+    ${list.data && !list.data.length && html`<div class="panel empty"><${Mascot} mood="cheer" size=${84} /><p class="muted">No leeches. Nice.</p></div>`}
     <div class="panel" style="padding:0">${(list.data || []).map((c) => { const s = sides(c, c.variant); return html`<div class="cardrow">
       <div><${Md} src=${s.prompt} /><div class="small faint">${c.icon} ${c.course_title} · ${c.set_title}</div></div>
       <${Md} class="back" src=${s.answer} />

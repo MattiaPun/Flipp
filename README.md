@@ -220,3 +220,5 @@ To change the database schema, add a new entry to the `migrations` array in `ser
 - If you distribute it, modified or not, you must distribute the full source code.
 - Your distributed version must stay under GPL v3.
 - You must keep the copyright and license notices.
+
+The bundled Nunito font (`@fontsource-variable/nunito`) is a separate work under the [SIL Open Font License 1.1](https://openfontlicense.org).

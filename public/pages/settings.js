@@ -8,7 +8,7 @@ const webauthn = () => import('/vendor/webauthn/index.js');
 
 export function Settings({ me, onLogout, reloadMe }) {
   const [theme, setT] = useState(currentTheme());
-  const [local, setLocal] = useState({ sound: prefs.get('sound', false), haptics: prefs.get('haptics', true), speech: prefs.get('speech', false) });
+  const [local, setLocal] = useState({ sound: prefs.get('sound', true), haptics: prefs.get('haptics', true), speech: prefs.get('speech', false) });
   const toggle = (k) => (e) => { prefs.set(k, e.target.checked); setLocal({ ...local, [k]: e.target.checked }); };
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); };
   const server = useAsync(() => api('/account/prefs'));

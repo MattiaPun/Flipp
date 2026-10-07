@@ -1,19 +1,21 @@
 // Study modes: Learn (spaced repetition), Flashcards, Write, Multiple choice, Cram, Match, Practice test.
 import { html, useState, useEffect, useRef, useMemo, useReducer } from '/vendor/htm-preact.js';
-import { api, useAsync, toast, feedback, speak, prefs, Md, Icon } from '/ui.js';
+import { api, useAsync, toast, feedback, confetti, speak, prefs, Md, Icon, Mascot } from '/ui.js';
 import { StudyQueue, grade, plain, shuffle, sides, charDiff } from '/lib.js';
 import { preview } from '/srs.js';
 import { queueReview, unqueueReview, flushReviews } from '/offline.js';
 
 export const MODES = {
-  learn: { title: 'Learn', sub: 'Spaced repetition', api: 'srs', records: true },
-  flip: { title: 'Flashcards', sub: 'Flip & swipe', api: 'all', records: true },
-  write: { title: 'Write', sub: 'Type the answer', api: 'all', records: true },
-  choice: { title: 'Multiple choice', sub: 'Pick the answer', api: 'all', records: false },
-  cram: { title: 'Cram', sub: 'Weakest first, no schedule', api: 'cram', records: false },
-  match: { title: 'Match', sub: 'Beat the clock', api: 'all', records: false },
-  test: { title: 'Practice test', sub: 'Mixed questions, scored', api: 'all', records: false },
+  learn: { ico: '🧠', title: 'Learn', sub: 'Spaced repetition', api: 'srs', records: true },
+  flip: { ico: '🃏', title: 'Flashcards', sub: 'Flip & swipe', api: 'all', records: true },
+  write: { ico: '✍️', title: 'Write', sub: 'Type the answer', api: 'all', records: true },
+  choice: { ico: '✅', title: 'Multiple choice', sub: 'Pick the answer', api: 'all', records: false },
+  cram: { ico: '⚡', title: 'Cram', sub: 'Weakest first, no schedule', api: 'cram', records: false },
+  match: { ico: '🧩', title: 'Match', sub: 'Beat the clock', api: 'all', records: false },
+  test: { ico: '📝', title: 'Practice test', sub: 'Mixed questions, scored', api: 'all', records: false },
 };
+const PRAISE = ['Nice!', 'Great job!', 'Awesome!', 'You got it!', 'Perfect!', 'Brilliant!', 'Nailed it!'];
+const praise = () => PRAISE[Math.floor(Math.random() * PRAISE.length)];
 const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 
 // Entry: #/study?set=1|course=1|tag=x &mode=learn &dir=front|back|both &starred=1 &len=20 &min=10
@@ -38,7 +40,7 @@ export function Study({ query }) {
   if (error) return html`<div class="study"><p class="error">${error.message}</p><a class="btn" href=${back}>Back</a></div>`;
   if (!items.length) {
     return html`<div class="study pop empty-state">
-      <div style="font-size:42px">✓</div>
+      <${Mascot} mood=${mode === 'learn' ? 'sleepy' : 'happy'} size=${96} />
       <h2>${mode === 'learn' ? 'All caught up' : 'No cards here yet'}</h2>
       <p class="muted">${mode === 'learn' ? 'Nothing is due right now. Come back later, or practice with another mode.' : query.starred === '1' ? 'Star some cards first.' : 'Add a few cards first.'}</p>
       <div class="row" style="justify-content:center;margin-top:16px">
@@ -77,6 +79,7 @@ function Session({ items, ctx, restart }) {
   const [flipped, setFlipped] = useState(false);
   const [started] = useState(Date.now());
   const [timeUp, setTimeUp] = useState(false);
+  const [combo, setCombo] = useState(0);
   const [stars, setStars] = useState(() => new Map(items.map((c) => [c.id, !!c.starred])));
   const item = q.current;
 
@@ -105,7 +108,9 @@ function Session({ items, ctx, restart }) {
       });
     }
     q.answer(r >= 3, { p, item: cur, progress: cur.progress });
-    feedback(r >= 3 ? 'good' : 'bad');
+    // Write/Choice already played their sound when the answer was checked.
+    if (mode !== 'write' && mode !== 'choice') feedback(r >= 3 ? 'good' : 'bad');
+    setCombo((c) => (r >= 3 ? c + 1 : 0));
     setFlipped(false);
     tick();
   };
@@ -165,12 +170,13 @@ function Session({ items, ctx, restart }) {
   const common = { item, starred: isStarred, onStar: () => toggleStar(item), onBury: item.scheduled ? () => scheduleAction(item, 'bury') : null, onSuspend: item.scheduled ? () => scheduleAction(item, 'suspend') : null };
 
   return html`<div class="study">
-    <div class="row between">
-      <a class="btn ghost sm" href=${ctx.back}><${Icon} name="x" /> ${MODES[mode].title}</a>
-      <span class="small muted">${q.finished} / ${q.total} · ${left} left${ctx.minutes ? html` · <${Countdown} until=${started + ctx.minutes * 60_000} />` : ''}</span>
-      <button class="btn ghost sm" onClick=${undo} disabled=${!q.history.length} title="Undo (Z)" aria-label="Undo"><${Icon} name="undo" /></button>
+    <div class="study-head">
+      <a class="btn ghost icon-btn" href=${ctx.back} title=${`Quit ${MODES[mode].title}`} aria-label=${`Quit ${MODES[mode].title}`}><${Icon} name="x" size=${22} /></a>
+      <div class="progress" role="progressbar" aria-label="Session progress" aria-valuenow=${Math.round(pct)} aria-valuemin="0" aria-valuemax="100"><i style=${{ width: pct + '%' }} /></div>
+      ${combo >= 3 && html`<span class="combo" key=${combo} title="Correct in a row">🔥 ${combo}</span>`}
+      <button class="btn ghost icon-btn" onClick=${undo} disabled=${!q.history.length} title="Undo (Z)" aria-label="Undo"><${Icon} name="undo" /></button>
     </div>
-    <div class="progress" role="progressbar" aria-valuenow=${Math.round(pct)} aria-valuemin="0" aria-valuemax="100"><i style=${{ width: pct + '%' }} /></div>
+    <span class="small muted" style="text-align:center;margin-top:-8px">${MODES[mode].ico} ${MODES[mode].title} · ${q.finished} / ${q.total} done · ${left} left${ctx.minutes ? html` · <${Countdown} until=${started + ctx.minutes * 60_000} />` : ''}</span>
     ${mode === 'write' ? html`<${Write} key=${k} ...${common} rate=${rate} undo=${undo} />`
       : mode === 'choice' ? html`<${Choice} key=${k} ...${common} pool=${items} rate=${rate} undo=${undo} />`
       : html`
@@ -350,13 +356,15 @@ function Write({ item, rate, undo, ...tools }) {
           </div>
         </form>`
       : html`<div class="result pop ${result === 'exact' ? 'ok' : result === 'close' ? 'close' : 'bad'}">
-          <div class="small muted">${result === 'exact' ? (hints ? 'Correct, with hints' : 'Correct') : result === 'close' ? 'Almost — counted as correct (check spelling / accents)' : input ? 'Not quite' : 'Answer'}</div>
-          ${input && result !== 'exact' && html`<div class="diff" aria-label="Your answer compared to the correct one">${charDiff(input, target).map((d) => html`<span class=${d.op}>${d.ch}</span>`)}</div>`}
+          <div class="result-title">${result === 'exact' ? (hints ? '👍 Correct, with hints' : `🎉 ${praise()}`) : result === 'close' ? '😅 Almost! Watch the spelling' : input ? '😬 Not quite' : '💡 Here it is'}</div>
+          ${input && result !== 'exact' && html`<div class="small muted">You wrote:</div>
+            <div class="diff" aria-label="Your answer compared to the correct one">${charDiff(input, target).map((d) => html`<span class=${d.op}>${d.ch}</span>`)}</div>`}
+          ${result !== 'exact' && html`<div class="small muted">Correct answer:</div>`}
           <${Md} src=${answer} />
           <${Extras} item=${item} />
         </div>
         <div class="row">
-          <button class="btn primary grow" onClick=${() => rate(ratingFor(result))}>Continue <kbd>↵</kbd></button>
+          <button class="btn lg grow ${result === 'wrong' ? 'again' : 'good'}" onClick=${() => rate(ratingFor(result))}>Continue <kbd>↵</kbd></button>
           ${result === 'wrong' && html`<button class="btn" onClick=${() => rate(3)}>I was right</button>`}
         </div>`}
   </div>`;
@@ -387,8 +395,10 @@ function Choice({ item, pool, rate, undo, ...tools }) {
     <div class="choices">${options.map((o, i) => html`<button class="choice ${picked !== null && o.correct ? 'right' : ''} ${picked === i && !o.correct ? 'wrong' : ''}" onClick=${() => pick(i)} disabled=${picked !== null && picked !== i && !o.correct}>
       <kbd>${i + 1}</kbd><${Md} src=${o.text} /></button>`)}</div>
     ${picked !== null && html`<div class="col pop">
-      ${!options[picked].correct && html`<div class="result bad"><div class="small muted">Correct answer</div><${Md} src=${answer} /><${Extras} item=${item} /></div>`}
-      <button class="btn primary" onClick=${() => rate(options[picked].correct ? 3 : 1)}>Continue <kbd>↵</kbd></button></div>`}
+      ${options[picked].correct
+        ? html`<div class="result ok"><div class="result-title" style="margin:0">🎉 ${praise()}</div></div>`
+        : html`<div class="result bad"><div class="result-title">😬 Not quite</div><div class="small muted">Correct answer:</div><${Md} src=${answer} /><${Extras} item=${item} /></div>`}
+      <button class="btn lg ${options[picked].correct ? 'good' : 'again'}" onClick=${() => rate(options[picked].correct ? 3 : 1)}>Continue <kbd>↵</kbd></button></div>`}
   </div>`;
 }
 
@@ -398,15 +408,17 @@ function Summary({ q, started, ctx, restart, timeUp }) {
   const firstTry = [...q.firstTry.values()].filter(Boolean).length;
   const missed = [...q.miss].sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ item: q.cards.get(id), n }));
   const mins = Math.max(1, Math.round((Date.now() - started) / 60000));
-  useEffect(() => feedback('good'), []);
+  const acc = answered.length ? Math.round((firstTry / answered.length) * 100) : 0;
+  useEffect(() => { feedback('win'); if (!timeUp && answered.length) confetti(acc >= 80 ? 120 : 60); }, []);
   return html`<div class="study pop">
-    <div style="text-align:center;padding:12px 0"><div style="font-size:40px">${timeUp ? '⏱' : missed.length ? '💪' : '🎉'}</div>
-      <h1>${timeUp ? "Time's up" : 'Session complete'}</h1>
-      ${stats && html`<p class="muted">🔥 ${stats.streak}-day streak · ${stats.today} reviews today${stats.goal ? ` · goal ${Math.min(stats.today, stats.goal)}/${stats.goal}` : ''}</p>`}</div>
+    <div class="celebrate"><${Mascot} mood=${timeUp ? 'happy' : 'cheer'} size=${110} />
+      <h1 style="margin-top:6px">${timeUp ? "Time's up" : 'Session complete'}${timeUp ? ' ⏱' : acc === 100 ? ' 🏆' : ''}</h1>
+      <p class="muted" style="font-weight:700">${timeUp ? 'Nice focus. Pick it up again any time.' : acc === 100 ? 'Flawless! Every card right on the first try.' : acc >= 80 ? 'Great session, you are on a roll!' : 'Every miss is a memory getting stronger 💪'}</p>
+      ${stats && html`<p class="muted small" style="margin-top:4px">🔥 ${stats.streak}-day streak · ${stats.today} reviews today${stats.goal ? ` · goal ${Math.min(stats.today, stats.goal)}/${stats.goal}` : ''}</p>`}</div>
     <div class="stats">
-      <div class="stat"><b>${answered.length}</b><span>cards</span></div>
-      <div class="stat"><b>${answered.length ? Math.round((firstTry / answered.length) * 100) : 0}%</b><span>first-try accuracy</span></div>
-      <div class="stat"><b>${mins}m</b><span>time</span></div>
+      <div class="stat blue"><b><span class="ico">🃏</span>${answered.length}</b><span>cards</span></div>
+      <div class="stat good"><b><span class="ico">🎯</span>${acc}%</b><span>first try</span></div>
+      <div class="stat flame"><b><span class="ico">⏱</span>${mins}m</b><span>time</span></div>
     </div>
     ${missed.length > 0 && html`<div>
       <div class="section-title">Needs more practice</div>
@@ -414,8 +426,8 @@ function Summary({ q, started, ctx, restart, timeUp }) {
         <${Md} src=${s.prompt} /><${Md} class="back" src=${s.answer} /><span class="small" style="color:var(--bad)">missed ${n}×</span></div>`; })}</div>
     </div>`}
     <div class="row">
-      ${missed.length > 0 && html`<button class="btn primary" onClick=${() => restart(missed.map((m) => m.item))}>Practice missed (${missed.length})</button>`}
-      ${ctx.mode !== 'learn' && html`<button class="btn" onClick=${() => restart()}>Study again</button>`}
+      ${missed.length > 0 && html`<button class="btn primary lg" onClick=${() => restart(missed.map((m) => m.item))}>Practice missed (${missed.length})</button>`}
+      ${ctx.mode !== 'learn' && html`<button class=${`btn ${missed.length ? '' : 'primary lg'}`} onClick=${() => restart()}>Study again</button>`}
       <a class="btn ghost" href=${ctx.back}>Done</a>
     </div>
   </div>`;
@@ -427,7 +439,8 @@ function Match({ items, ctx, restart }) {
     const picked = shuffle(items).filter((i) => { const k = plain(sides(i, i.variant).expected).toLowerCase(); if (seen.has(k) || seen.has(i.id)) return false; seen.add(k).add(i.id); return true; }).slice(0, 6);
     return shuffle(picked.flatMap((i) => {
       const s = sides(i, i.variant);
-      return [{ key: i.key + 'f', id: i.key, text: plain(s.prompt) || '—' }, { key: i.key + 'b', id: i.key, text: plain(s.expected) || '—' }];
+      // Raw Markdown (rendered with KaTeX in the tile); placeholder when a side is image-only.
+      return [{ key: i.key + 'f', id: i.key, text: plain(s.prompt) ? s.prompt : '—' }, { key: i.key + 'b', id: i.key, text: plain(s.expected) ? s.expected : '—' }];
     }));
   }, [items]);
   const [sel, setSel] = useState(null);
@@ -454,6 +467,7 @@ function Match({ items, ctx, restart }) {
       if (g.size === tiles.length) {
         const ms = Math.round(performance.now() - start.current + penalty.current);
         setResult(ms);
+        feedback('win'); confetti(70);
         if (ctx.setId) api(`/sets/${ctx.setId}/match`, { method: 'POST', body: { ms } }).then(board.reload, (e) => toast(e.message));
       }
     } else {
@@ -472,13 +486,14 @@ function Match({ items, ctx, restart }) {
     </div>
     ${result == null
       ? html`<div class="match">${tiles.map((t) => html`<button key=${t.key} onClick=${() => pick(t)}
-          class="mtile ${sel?.key === t.key ? 'sel' : ''} ${gone.has(t.key) ? 'gone' : ''} ${wrong.includes(t.key) ? 'wrong' : ''}">${t.text.slice(0, 140)}</button>`)}</div>`
+          class="mtile ${sel?.key === t.key ? 'sel' : ''} ${gone.has(t.key) ? 'gone' : ''} ${wrong.includes(t.key) ? 'wrong' : ''}"><${Md} src=${t.text.slice(0, 300)} /></button>`)}</div>`
       : html`<div class="col pop">
-          <div style="text-align:center"><div style="font-size:40px">⏱</div><h1>${(result / 1000).toFixed(1)}s</h1></div>
+          <div class="celebrate"><${Mascot} mood="cheer" size=${96} /><h1>${(result / 1000).toFixed(1)}s</h1>
+            <p class="muted" style="font-weight:700">${board.data?.[0]?.ms === result ? '🏆 New best on this set!' : 'All matched! Can you go faster?'}</p></div>
           ${ctx.setId && html`<div class="panel"><div class="section-title">Leaderboard</div>
             <table class="list"><tbody>${(board.data || []).map((s, i) => html`<tr style=${s.ms === result ? 'font-weight:600' : ''}>
               <td class="faint">${i + 1}</td><td>${s.name}</td><td style="text-align:right" class="timer small">${(s.ms / 1000).toFixed(1)}s</td></tr>`)}</tbody></table></div>`}
-          <div class="row"><button class="btn primary" onClick=${restart}>Play again</button><a class="btn ghost" href=${ctx.back}>Done</a></div>
+          <div class="row"><button class="btn primary lg" onClick=${restart}>Play again</button><a class="btn ghost" href=${ctx.back}>Done</a></div>
         </div>`}
   </div>`;
 }
@@ -506,14 +521,19 @@ function Test({ items, ctx, restart }) {
     return a !== undefined && a === q.truth;
   };
   const score = done ? questions.filter(correct).length : 0;
-  const submit = () => { setDone(true); scrollTo({ top: 0, behavior: 'smooth' }); feedback('good'); };
+  const submit = () => {
+    setDone(true); scrollTo({ top: 0, behavior: 'smooth' });
+    const pct = questions.filter(correct).length / questions.length;
+    feedback(pct >= 0.6 ? 'win' : 'bad');
+    if (pct >= 0.8) confetti();
+  };
 
   return html`<div class="study">
     <div class="row between">
       <a class="btn ghost sm" href=${ctx.back}><${Icon} name="x" /> Practice test</a>
       <span class="small muted">${questions.length} questions</span><span />
     </div>
-    ${done && html`<div class="panel pop" style="text-align:center"><h1>${Math.round((score / questions.length) * 100)}%</h1>
+    ${done && html`<div class="panel pop" style="text-align:center"><${Mascot} mood=${score / questions.length >= 0.6 ? 'cheer' : 'sad'} size=${84} /><h1>${Math.round((score / questions.length) * 100)}%</h1>
       <p class="muted">${score} of ${questions.length} correct</p>
       <div class="row" style="justify-content:center;margin-top:10px"><button class="btn primary" onClick=${restart}>New test</button><a class="btn ghost" href=${ctx.back}>Done</a></div></div>`}
     ${questions.map((q, i) => {

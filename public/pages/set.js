@@ -109,7 +109,7 @@ function Launcher({ set }) {
     return `#/study?${p}`;
   };
   return html`<div>
-    <div class="modes">${Object.entries(MODES).map(([m, x]) => html`<a class="mode" href=${url(m)}><b>${x.title}</b><span>${x.sub}</span></a>`)}</div>
+    <div class="modes">${Object.entries(MODES).map(([m, x]) => html`<a class="mode" data-mode=${m} href=${url(m)}><span class="mode-ico">${x.ico}</span><b>${x.title}</b><span>${x.sub}</span></a>`)}</div>
     <div class="row launcher-opts">
       <label class="field inline">Direction<select class="input compact" value=${opts.dir} onChange=${(e) => update({ dir: e.target.value })}>
         <option value="front">Term → definition</option><option value="back">Definition → term</option><option value="both">Both</option></select></label>

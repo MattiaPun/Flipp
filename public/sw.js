@@ -1,13 +1,13 @@
 // Service worker: precached app shell (stale-while-revalidate), network-first caching of the study data you
 // opened recently (so you can keep studying offline), immutable uploads cache-first, and push notifications.
-const CACHE = 'flipp-v3';
+const CACHE = 'flipp-v4';
 const API_CACHE = 'flipp-api';
 const SHELL = [
   '/', '/index.html', '/styles.css', '/theme.js', '/app.js', '/ui.js', '/md.js', '/lib.js', '/srs.js', '/offline.js',
   '/pages/auth.js', '/pages/home.js', '/pages/course.js', '/pages/set.js', '/pages/study.js', '/pages/settings.js', '/pages/admin.js',
   '/pages/backups.js', '/pages/browse.js', '/pages/stats.js', '/pages/groups.js', '/pages/transfer.js', '/pages/reminders.js',
   '/icons/icon.svg', '/icons/icon-192.png', '/vendor/htm-preact.js', '/vendor/marked.js', '/vendor/purify.js',
-  '/vendor/katex/katex.mjs', '/vendor/katex/katex.min.css',
+  '/vendor/katex/katex.mjs', '/vendor/katex/katex.min.css', '/vendor/nunito/wght.css', '/vendor/nunito/files/nunito-latin-wght-normal.woff2',
 ];
 // GET endpoints worth keeping for offline study.
 const OFFLINE_API = /^\/api\/(auth\/me|courses|courses\/\d+|sets\/\d+|study|stats|tags)$/;
