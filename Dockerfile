@@ -10,7 +10,8 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 FROM deps AS test
 COPY server ./server
 COPY public ./public
-RUN node --disable-warning=ExperimentalWarning --test
+COPY test ./test
+RUN node --disable-warning=ExperimentalWarning --test 'test/*.test.js'
 
 # ---- runtime: one small image serving API + static app ----
 FROM node:24-alpine AS runtime
@@ -24,7 +25,6 @@ COPY --chown=node:node package.json ./
 COPY --from=test --chown=node:node /app/server ./server
 COPY --chown=node:node public ./public
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN rm -f server/*.test.js
 VOLUME ["/data"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD wget -qO- http://127.0.0.1:${PORT}/api/auth/me >/dev/null || exit 1
