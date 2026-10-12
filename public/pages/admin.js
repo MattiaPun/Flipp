@@ -1,11 +1,11 @@
-// Admin console: overview, users & roles & quotas, access settings & invites, library moderation, storage, branding, audit log.
+// Admin console: overview, users & roles, access settings & invites, storage, backups, audit log.
 import { html, useState } from '/vendor/htm-preact.js';
 import { api, useAsync, useSubmit, formData, toast, Modal, fmtBytes, fmtDate, fmtDateTime, timeAgo } from '/ui.js';
 import { Backups } from '/pages/backups.js';
 
-const TABS = [['overview', 'Overview'], ['users', 'Users'], ['access', 'Access'], ['library', 'Library'], ['storage', 'Storage'], ['backups', 'Backups'], ['branding', 'Branding'], ['audit', 'Audit log']];
+const TABS = [['overview', 'Overview'], ['users', 'Users'], ['access', 'Access'], ['storage', 'Storage'], ['backups', 'Backups'], ['audit', 'Audit log']];
 
-export function Admin({ me, query, reloadMe }) {
+export function Admin({ me, query }) {
   const tab = TABS.some(([k]) => k === query.tab) ? query.tab : 'overview';
   if (me.user.role !== 'admin') return html`<p class="error">Admins only.</p>`;
   return html`<div class="stack">
@@ -14,10 +14,8 @@ export function Admin({ me, query, reloadMe }) {
     ${tab === 'overview' && html`<${Overview} />`}
     ${tab === 'users' && html`<${Users} me=${me} />`}
     ${tab === 'access' && html`<${Access} me=${me} />`}
-    ${tab === 'library' && html`<${Library} />`}
     ${tab === 'storage' && html`<${Storage} />`}
     ${tab === 'backups' && html`<${Backups} />`}
-    ${tab === 'branding' && html`<${Branding} me=${me} reloadMe=${reloadMe} />`}
     ${tab === 'audit' && html`<${Audit} />`}
   </div>`;
 }
@@ -34,29 +32,16 @@ function Overview() {
       <div class="row between"><span class="muted">Uploads</span><span>${fmtBytes(o.storageBytes)}</span></div>
       <div class="row between"><span class="muted">Email (SMTP)</span><span>${o.mail ? 'configured' : 'not configured'}</span></div>
       <div class="row between"><span class="muted">Total reviews</span><span>${o.reviews}</span></div>
-      ${o.pendingPublish > 0 && html`<div class="row between"><span class="muted">Courses waiting for review</span><a class="link" href="#/admin?tab=library">${o.pendingPublish}</a></div>`}
     </div>
   </div>`;
 }
 
-function QuotaFields({ value = {}, placeholder = {} }) {
-  const f = (k, label) => html`<label class="field" style="flex:1;min-width:110px">${label}
-    <input class="input" type="number" min="0" name=${k} value=${value[k] ?? ''} placeholder=${placeholder[k] ? String(placeholder[k]) : 'unlimited'} /></label>`;
-  return html`<div class="row" style="align-items:flex-start">${f('storageMb', 'Storage (MB)')}${f('courses', 'Courses')}${f('cards', 'Cards')}</div>`;
-}
-
 function Users({ me }) {
   const users = useAsync(() => api('/admin/users'));
-  const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
   const act = (p, msg) => p.then(() => { users.reload(); if (msg) toast(msg); }, (e) => toast(e.message));
   const [addUser, st] = useSubmit(async (e) => { await api('/admin/users', { method: 'POST', body: formData(e) }); setAdding(false); users.reload(); toast('User created'); });
-  const [saveQuota, sq] = useSubmit(async (e) => {
-    const q = formData(e);
-    await api(`/admin/users/${editing.id}`, { method: 'PUT', body: { quota: Object.values(q).every((v) => v === '') ? null : q } });
-    setEditing(null); users.reload();
-  });
   const list = (users.data || []).filter((u) => !filter || `${u.name} ${u.email}`.toLowerCase().includes(filter.toLowerCase()));
 
   return html`<div class="col">
@@ -69,13 +54,12 @@ function Users({ me }) {
         <td>${u.name}<div class="small muted">${u.email}</div></td>
         <td>${u.id === me.user.id ? u.role : html`<select class="input compact" value=${u.role} aria-label="Role"
           onChange=${(e) => act(api(`/admin/users/${u.id}`, { method: 'PUT', body: { role: e.target.value } }), 'Role updated')}>
-          <option value="user">User</option><option value="teacher">Teacher</option><option value="admin">Admin</option></select>`}</td>
+          <option value="user">User</option><option value="admin">Admin</option></select>`}</td>
         <td class="small">${[u.sso && 'SSO', u.totp && '2FA', u.passkeys > 0 && `${u.passkeys} passkey${u.passkeys > 1 ? 's' : ''}`, !u.has_password && !u.sso && 'no password'].filter(Boolean).join(' · ') || html`<span class="faint">password</span>`}</td>
-        <td class="small">${u.courses} courses · ${fmtBytes(u.storage)}${u.quota ? html` <span class="tag">custom quota</span>` : ''}</td>
+        <td class="small">${u.courses} courses · ${fmtBytes(u.storage)}</td>
         <td class="small muted">${u.last_seen ? timeAgo(u.last_seen) : 'never'}</td>
         <td style="text-align:right;white-space:nowrap">
           <details class="menu"><summary class="btn ghost sm">⋯</summary><div class="menu-list">
-            <button onClick=${() => setEditing(u)}>Edit quota</button>
             <button onClick=${() => act(api(`/admin/users/${u.id}/logout`, { method: 'POST' }), 'Signed out everywhere')}>Sign out everywhere</button>
             ${u.totp && html`<button onClick=${() => confirm(`Remove two-factor authentication for ${u.email}? They will be signed out.`) && act(api(`/admin/users/${u.id}/reset-2fa`, { method: 'POST' }), '2FA reset')}>Reset 2FA</button>`}
             ${u.id !== me.user.id && html`<button class="danger" onClick=${() => confirm(`Delete ${u.email} and all their data?`) && act(api(`/admin/users/${u.id}`, { method: 'DELETE' }), 'User deleted')}>Delete user</button>`}
@@ -88,17 +72,9 @@ function Users({ me }) {
         <label class="field">Email<input class="input" name="email" type="email" required /></label>
         <label class="field">Name<input class="input" name="name" /></label>
         <label class="field">Temporary password<input class="input" name="password" type="password" minlength="8" required autocomplete="new-password" /></label>
-        <label class="field">Role<select class="input" name="role"><option value="user">User</option><option value="teacher">Teacher</option><option value="admin">Admin</option></select></label>
+        <label class="field">Role<select class="input" name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
         ${st.error && html`<p class="error">${st.error}</p>`}
         <button class="btn primary" disabled=${st.busy}>Create user</button>
-      </form>
-    <//>`}
-    ${editing && html`<${Modal} title=${`Quota for ${editing.email}`} onClose=${() => setEditing(null)}>
-      <form class="col" onSubmit=${saveQuota}>
-        <p class="small muted">Leave a field empty to use the instance default. 0 means unlimited.</p>
-        <${QuotaFields} value=${editing.quota || {}} />
-        ${sq.error && html`<p class="error">${sq.error}</p>`}
-        <button class="btn primary" disabled=${sq.busy}>Save</button>
       </form>
     <//>`}
   </div>`;
@@ -116,7 +92,6 @@ function Access({ me }) {
     if (!r.emailed) navigator.clipboard?.writeText(r.link).then(() => toast('Invite link copied'), () => {});
     else toast(`Invite sent to ${email}`);
   });
-  const [saveQuota, sq] = useSubmit(async (e) => { await api('/admin/settings', { method: 'PUT', body: { quotaDefaults: formData(e) } }); toast('Default quotas saved'); s.reload(); });
   const d = s.data;
   if (!d) return s.error ? html`<p class="error">${s.error.message}</p>` : null;
   return html`<div class="col">
@@ -145,34 +120,6 @@ function Access({ me }) {
             <button class="btn ghost sm danger" onClick=${() => act(api(`/admin/invites/${encodeURIComponent(i.code)}`, { method: 'DELETE' }))}>Revoke</button></td></tr>`)}
       </tbody></table></div>`}
     </div>
-
-    <form class="panel col" onSubmit=${saveQuota}>
-      <div class="section-title" style="margin:0">Default quotas</div>
-      <p class="small muted">Limits for every non-admin user without a custom quota. 0 or empty = unlimited.</p>
-      <${QuotaFields} value=${d.quotaDefaults} />
-      ${sq.error && html`<p class="error">${sq.error}</p>`}
-      <div><button class="btn" disabled=${sq.busy}>Save defaults</button></div>
-    </form>
-  </div>`;
-}
-
-function Library() {
-  const [status, setStatus] = useState('pending');
-  const list = useAsync(() => api(`/admin/courses?status=${status}`), [status]);
-  const act = (p, msg) => p.then(() => { list.reload(); toast(msg); }, (e) => toast(e.message));
-  return html`<div class="col">
-    <div class="row">${['pending', 'approved', 'rejected'].map((s) => html`<button class="btn sm ${status === s ? 'primary' : ''}" onClick=${() => setStatus(s)}>${s[0].toUpperCase() + s.slice(1)}</button>`)}</div>
-    ${list.data && !list.data.length && html`<p class="muted">Nothing here.</p>`}
-    <div class="col" style="gap:8px">${(list.data || []).map((c) => html`<div class="panel row between">
-      <div class="grow"><b>${c.icon || '📚'} ${c.title}</b> <span class="small muted">· ${c.card_count} cards · by ${c.owner_name} (${c.owner_email})</span>
-        ${c.description && html`<p class="small muted">${c.description}</p>`}</div>
-      <div class="row">
-        <a class="btn sm ghost" href=${`#/course/${c.id}`}>Open</a>
-        ${status !== 'approved' && html`<button class="btn sm primary" onClick=${() => act(api(`/admin/courses/${c.id}/review`, { method: 'POST', body: { approve: true } }), 'Published')}>Approve</button>`}
-        ${status !== 'rejected' && html`<button class="btn sm ghost danger" onClick=${() => act(api(`/admin/courses/${c.id}/review`, { method: 'POST', body: { approve: false } }), status === 'approved' ? 'Unpublished' : 'Rejected')}>${status === 'approved' ? 'Unpublish' : 'Reject'}</button>`}
-        ${status === 'approved' && html`<button class="btn sm" onClick=${() => act(api(`/admin/courses/${c.id}/featured`, { method: 'PUT', body: { featured: !c.featured } }), c.featured ? 'Unfeatured' : 'Featured')}>${c.featured ? '★ Featured' : '☆ Feature'}</button>`}
-      </div>
-    </div>`)}</div>
   </div>`;
 }
 
@@ -183,48 +130,13 @@ function Storage() {
   if (!d) return s.error ? html`<p class="error">${s.error.message}</p>` : null;
   return html`<div class="col">
     <div class="panel row between">
-      <div><b>${d.files} files</b><div class="small muted">${d.orphans} unused (${fmtBytes(d.orphanBytes)}) — not referenced by any card or the branding for over 24 hours. Cleaned automatically every night.</div></div>
+      <div><b>${d.files} files</b><div class="small muted">${d.orphans} unused (${fmtBytes(d.orphanBytes)}) — not referenced by any card for over 24 hours. Cleaned automatically every night.</div></div>
       <button class="btn sm" onClick=${clean} disabled=${st.busy || !d.orphans}>Clean up now</button>
     </div>
     <div class="panel" style="padding:0"><table class="list"><thead><tr><th>User</th><th>Files</th><th>Storage</th></tr></thead><tbody>
       ${d.perUser.map((u) => html`<tr><td>${u.name}<div class="small muted">${u.email}</div></td><td>${u.files}</td><td>${fmtBytes(u.bytes)}</td></tr>`)}
     </tbody></table></div>
   </div>`;
-}
-
-function Branding({ me, reloadMe }) {
-  const b = me.branding;
-  const [logo, setLogo] = useState(b.logo);
-  const [accent, setAccent] = useState(b.accent || '#ededef');
-  const [useAccent, setUseAccent] = useState(!!b.accent);
-  const [save, st] = useSubmit(async (e) => {
-    const f = formData(e);
-    await api('/admin/branding', { method: 'PUT', body: { name: f.name, welcome: f.welcome, logo, accent: useAccent ? accent : '' } });
-    document.querySelector('link[href^="/branding.css"]')?.setAttribute('href', `/branding.css?${Date.now()}`);
-    toast('Branding saved'); reloadMe();
-  });
-  const upload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try { const r = await api('/uploads', { method: 'POST', file }); if (r.kind !== 'image') throw new Error('Pick an image'); setLogo(r.url); } catch (err) { toast(err.message); }
-  };
-  return html`<form class="panel col" onSubmit=${save}>
-    <label class="field">Instance name<input class="input" name="name" value=${b.name} required maxlength="40" /></label>
-    <div class="field">Logo
-      <div class="row">${logo ? html`<img src=${logo} alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover" />` : html`<span class="small faint">Default logo</span>`}
-        <label class="btn sm">Upload<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange=${upload} /></label>
-        ${logo && html`<button type="button" class="btn sm ghost" onClick=${() => setLogo(null)}>Remove</button>`}</div>
-      <span class="small faint">Square PNG, at least 512×512, works best. Used in the app and as the install icon.</span>
-    </div>
-    <div class="field">Accent color
-      <div class="row"><label class="check"><input type="checkbox" checked=${useAccent} onChange=${(e) => setUseAccent(e.target.checked)} /> Custom accent</label>
-        <input type="color" value=${accent} disabled=${!useAccent} onInput=${(e) => setAccent(e.target.value)} aria-label="Accent color" /></div>
-      <span class="small faint">Used for primary buttons, progress bars and highlights. Off = the monochrome default.</span>
-    </div>
-    <label class="field">Welcome message (shown on the sign-in page, Markdown)<textarea class="input" name="welcome" rows="3" maxlength="1000">${b.welcome}</textarea></label>
-    ${st.error && html`<p class="error">${st.error}</p>`}
-    <div><button class="btn primary" disabled=${st.busy}>Save branding</button></div>
-  </form>`;
 }
 
 function Audit() {

@@ -14,19 +14,18 @@
 >
 > Issues and PRs are welcome. I'll look at them when I feel like it. 🙂
 
-Flipp is a minimal flashcard app with spaced repetition that you host yourself. It runs as one container and keeps everything in one folder.
+Flipp is a minimal flashcard app with spaced repetition that you host yourself: a self-hosted, multi-user Anki alternative. It runs as one container and keeps everything in one folder.
 
 ## Features
 
 **Learning**
 - **Spaced repetition** with the FSRS-6 algorithm, Anki-style learning steps, interval previews on the rating buttons, and a per-user optimizer that fits the scheduler to your own review history.
 - **Weak cards come back.** A card you rate *Again* or *Hard* returns 3–5 cards later and leaves the session only after two correct answers. Due cards with many lapses come first.
-- **Study modes:** Learn, Flashcards (3D flip, swipe left/right), Write (typo- and accent-tolerant, letter hints, character diff, optional speech input), Multiple choice, Cram (no scheduling), Match (timed, with a leaderboard), a scored Practice test, Survival (three lives against a shrinking clock), Listening (type what you hear, with a slow replay), and Speaking (answer out loud; Chrome and Safari). Write shows tap-to-insert keys for letters like å, ä and ö.
-- **Learning path:** each set is split into units of 8 cards along a trail. A unit is a short lesson (multiple choice for new cards, typing for seen ones), and the next unit opens once every card in the one before it has been answered.
-- **Rewards:** XP for every finished session, three daily quests (bonus XP), and streak freezes: one is earned every 7 days of streak (hold up to 2), and one covers each missed day automatically.
+- **Study modes:** Learn (spaced repetition), Flashcards (3D flip, swipe left/right), Write (typo- and accent-tolerant, letter hints, character diff, tap-to-insert keys for letters like å, ä and ö), Multiple choice, and Cram (no scheduling).
+- **Streaks** with streak freezes: one is earned every 7 days of streak (hold up to 2), and one covers each missed day automatically.
 - **Card types:** basic (optionally also studied in reverse) and cloze deletions (`{{c1::answer::hint}}`). Markdown, code, LaTeX, images, recorded or uploaded audio, text-to-speech, plus mnemonic, example and notes fields.
 - **Per-course settings:** target retention, daily new/review limits, learning steps, and automatic leech detection (cards you keep forgetting are suspended or flagged).
-- Session length (cards or minutes), starred-only, direction, bury and suspend, daily goal, streaks, statistics (heatmap, 30-day forecast, retention, hardest cards), daily push reminders, and offline studying that syncs later.
+- Session length (cards or minutes), starred-only, direction, bury and suspend, statistics (heatmap, 30-day forecast, retention, hardest cards), daily push reminders, and offline studying that syncs later.
 
 **Content**
 - Courses → sets → cards. Editor with formatting toolbar, live preview, paste or drop images.
@@ -35,16 +34,15 @@ Flipp is a minimal flashcard app with spaced repetition that you host yourself. 
 
 **Sharing & teaching**
 - Share a course with specific people as viewers or co-editors.
-- A public library: users request publication, admins approve and feature courses.
-- Groups/classes run by teachers: invite links, assigned courses, assignments with deadlines, per-student progress, cards the class struggles with, and a weekly review challenge.
+- A library: owners can share a course with everyone on the instance; others add it to their courses or make their own copy.
 
 **Accounts & security**
 - Local accounts, invite links, OpenID Connect (Authentik, Authelia, Keycloak, Google, …), passkeys, authenticator-app 2FA with recovery codes, password reset and email confirmation over SMTP.
-- Roles: user, teacher, admin. Admins can require 2FA for every admin.
+- Roles: user, admin. Admins can require 2FA for every admin.
 - Signed-in device list with remote sign-out, full personal data export, self-service account deletion.
 
 **Administration**
-- Users, roles and storage/course/card quotas; registration, invites and email settings; library moderation; branding (name, logo, accent color, welcome text); audit log; unused-upload cleanup.
+- Users and roles; registration, invites and email settings; audit log; unused-upload cleanup.
 - One-click and scheduled backups (database + uploads in one portable `.tar.gz`) and full restore. Backups work across SQLite and PostgreSQL.
 
 **App**
@@ -72,12 +70,11 @@ Everything is stored in `./data`:
 
 On first boot there is no administrator. Flipp prints a **setup token** to the logs (or uses `SETUP_TOKEN` if you set it), and only someone with that token can create the admin account. With OIDC configured, an SSO sign-in that carries the token can complete setup instead.
 
-After setup, the **Admin** page lets you manage users and roles, sign-ups and invites, quotas, the public library, storage, backups, branding and the audit log.
+After setup, the **Admin** page lets you manage users and roles, sign-ups and invites, storage, backups and the audit log.
 
 Roles:
-- **User:** creates and studies their own courses, shares them, joins groups.
-- **Teacher:** everything a user can do, plus creating groups and assigning courses.
-- **Admin:** everything, plus instance administration. Admins can publish courses directly and edit any course.
+- **User:** creates and studies their own courses, shares them with people or the whole instance.
+- **Admin:** everything, plus instance administration. Admins can edit any course.
 
 ## Demo data
 
@@ -87,7 +84,7 @@ Want something to click through? After the setup wizard, fill the instance with 
 docker compose exec -u node flipp node --disable-warning=ExperimentalWarning server/seed.js   # or: npm run seed
 ```
 
-This adds 12 courses (including a very easy *Swedish for beginners*), a public library, two groups with assignments, and 60 days of review history for your admin account. It also creates 8 demo users with `@demo.flipp.test` emails and the password `demo1234`. Run it again with `--reset` to recreate the demo data; your own data is never touched. Don't run it on an instance real people use.
+This adds 12 courses (including a very easy *Swedish for beginners*), a shared library, and 60 days of review history for your admin account. It also creates 8 demo users with `@demo.flipp.test` emails and the password `demo1234`. Run it again with `--reset` to recreate the demo data; your own data is never touched. Don't run it on an instance real people use.
 
 ## Configuration
 
@@ -97,7 +94,7 @@ All settings are environment variables. See [.env.example](.env.example) for the
 |---|---|---|
 | `PORT` | `3000` | HTTP port |
 | `PUBLIC_URL` | (derived from request) | External URL. Used for OIDC, passkeys, email links, the CSRF origin check and the `Secure` cookie flag. |
-| `TZ` | `UTC` | Instance time zone for daily jobs, scheduled backups and the group challenge week |
+| `TZ` | `UTC` | Instance time zone for daily jobs and scheduled backups |
 | `DATABASE_URL` | empty (SQLite at `/data/Flipp.db`) | Set `postgres://user:pass@host:5432/flipp` to use PostgreSQL |
 | `JWT_SECRET` | auto-generated | Server secret; also encrypts stored 2FA secrets. Generate with `openssl rand -hex 32`. |
 | `SETUP_TOKEN` | auto-generated, printed in logs | Token required to create the first admin |
@@ -197,7 +194,7 @@ If your proxy is not on loopback or a private network, set `TRUST_PROXY` to its 
 - **Content Security Policy.** Scripts load only from the app itself (`script-src 'self'`): no inline scripts and no CDNs. Framing is denied.
 - **XSS.** Card content is stored as entered and sanitized with DOMPurify when rendered.
 - **Uploads.** Checked by magic bytes: PNG, JPEG, GIF, WebP images and WebM, Ogg, MP3, M4A, WAV audio. SVG and HTML are rejected. Files get random names.
-- **Access control.** Every course, set and card request is checked against ownership, sharing, group assignment or public status; anything else answers 404.
+- **Access control.** Every course, set and card request is checked against ownership, sharing or library status; anything else answers 404.
 - **Rate limits.** Login, registration, setup, 2FA, password reset and SSO are rate limited per IP.
 - **Audit log** of sign-ins, failed sign-ins, security changes, admin actions, sharing and backups.
 - **SQL.** All queries are parameterized.
@@ -218,7 +215,7 @@ There is no build step. The browser loads ES modules directly, using Preact and 
 
 ```
 server/          index.js (app, security headers), auth.js (sessions, passwords), access.js (permissions), db.js (SQLite/Postgres + migrations),
-                 backup.js, archive.js, optimizer.js, storage.js, quota.js, jobs.js, routes/ (one file per area)
+                 backup.js, archive.js, optimizer.js, storage.js, jobs.js, routes/ (one file per area)
 public/          app.js (router, shell, ⌘K), ui.js, lib.js + srs.js (shared with the server), md.js, offline.js, sw.js, pages/ (one file per screen)
 test/            core (unit), api (end to end over HTTP), integrations (email, Anki, jobs, push), e2e/ (browser)
 ```

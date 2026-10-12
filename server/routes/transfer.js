@@ -11,7 +11,6 @@ import { db, UPLOAD_DIR } from '../db.js';
 import { httpError, now } from '../util.js';
 import { loadCourse } from '../access.js';
 import { audit } from '../audit.js';
-import { checkQuota } from '../quota.js';
 import { sniff, maxBytes } from '../storage.js';
 import { tarGzWriter, readTarGz } from '../archive.js';
 import { cardInput } from './content.js';
@@ -94,7 +93,6 @@ transferRouter.get('/courses/:id/export', async (req, res) => {
 
 // Body: a .flipp.tar.gz from the export above. Creates a new course owned by the caller.
 transferRouter.post('/courses/import', async (req, res) => {
-  await checkQuota(req.user.id, 'courses');
   const file = await bodyToTemp(req);
   try {
     let data = null;
@@ -104,7 +102,7 @@ transferRouter.post('/courses/import', async (req, res) => {
       for await (const e of readTarGz(fs.createReadStream(file), { maxEntryBytes: 64 * 1048576, maxTotalBytes: MAX_UNPACKED })) {
         if (e.name === 'course.json') data = JSON.parse(e.data.toString());
         else if (/^media\/[a-f0-9]{32}\.[a-z0-9]{3,4}$/.test(e.name)) {
-          await checkQuota(req.user.id, 'storageMb', (mediaBytes += e.data.length)); // fail early, before holding it all in memory
+          mediaBytes += e.data.length;
           media.set(path.basename(e.name), e.data);
         }
       }
@@ -112,7 +110,6 @@ transferRouter.post('/courses/import', async (req, res) => {
     if (data?.format !== 'flipp-course' || !Array.isArray(data.sets)) throw httpError(400, 'Not a Flipp course export');
     const total = data.sets.reduce((n, s) => n + (Array.isArray(s.cards) ? s.cards.length : 0), 0);
     if (total > 50_000) throw httpError(400, 'Too many cards in one course');
-    await checkQuota(req.user.id, 'cards', total);
     const renamed = new Map();
     for (const [oldName, buf] of media) { const r = await storeMedia(buf, req.user.id); if (r) renamed.set(oldName, r.url); }
     const fix = (v) => (typeof v === 'string' ? v.replace(REF, (m, n) => renamed.get(n) || m) : v);
@@ -234,14 +231,12 @@ transferRouter.post('/courses/:id/import/anki', async (req, res) => {
       let buf = null;
       if (entry && zip[entry]) try { buf = zstd(Buffer.from(zip[entry]), MEDIA_MAX + 1); } catch { /* larger than any allowed upload: skip */ }
       if (buf) {
-        await checkQuota(req.user.id, 'storageMb', buf.length); // usage already includes the media stored so far
         mediaBytes += buf.length;
         result = await storeMedia(buf, req.user.id);
       }
       mediaCache.set(name, result);
       return result;
     };
-    await checkQuota(course.owner_id, 'cards', notes.length);
     for (const n of notes) {
       const fields = String(n.flds).split('\x1f');
       const nc = byNote.get(n.id) || [];

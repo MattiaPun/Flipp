@@ -150,46 +150,28 @@ test('leech: repeated lapses suspend the card', async () => {
   await admin.put(`/api/courses/${state.course}/prefs`, {});
 });
 
-test('rewards: session XP, quests, learning-path units, streak freezes', async () => {
-  assert.equal((await admin.call('POST', '/api/activity', { mode: 'nope', answered: 5, correct: 5 })).status, 400);
-  assert.equal((await admin.call('POST', '/api/activity', { mode: 'write', answered: 0, correct: 0 })).status, 400);
-  assert.equal((await admin.call('POST', '/api/activity', { mode: 'write', answered: 3, correct: 4 })).status, 400);
-  const a = await admin.post('/api/activity', { mode: 'write', answered: 6, correct: 6, combo: 6 });
-  assert.ok(a.gained >= 12 + 2 + 5, 'XP for 6 clean answers');
-  assert.equal(a.xp, a.gained);
-  assert.equal(a.quests.length, 3);
-  const b = await admin.post('/api/activity', { mode: 'match', answered: 6, correct: 6 });
-  assert.equal(b.xp, a.xp + b.gained);
-  const stats = await admin.get('/api/stats');
-  assert.equal(stats.xp, b.xp);
-  assert.equal(stats.quests.length, 3);
-
-  // Unit 0 is the first UNIT_SIZE cards in set order (5 basic + one cloze with 2 deletions here).
-  assert.equal((await admin.get(`/api/study?set=${state.set}&mode=all&unit=0`)).items.length, 7);
-  assert.equal((await admin.get(`/api/study?set=${state.set}&mode=all&unit=1`)).items.length, 0);
-  assert.equal((await admin.call('GET', `/api/study?set=${state.set}&mode=all&unit=-1`)).status, 400);
-
+test('streak freezes: earned every 7 days, spent on missed days', async () => {
   const { db } = await import('../server/db.js');
   const { streakFor, userTz } = await import('../server/study-core.js');
   const { dayKey } = await import('../server/util.js');
   const day = (o, tz = 'UTC') => dayKey(Date.now() - o * 86_400_000, tz);
-  // A 7-day streak pays out one freeze, once per day.
+  // A 7-day streak (6 earlier days + today's reviews) pays out one freeze, once per day.
   const me = (await db.get("SELECT id FROM users WHERE email = 'admin@x.io'")).id;
   const tz = await userTz(me);
-  for (let o = 1; o <= 6; o++) await db.run('INSERT INTO activity (user_id, day, xp) VALUES (?, ?, 5) ON CONFLICT (user_id, day) DO NOTHING', me, day(o, tz));
-  const c = await admin.post('/api/activity', { mode: 'flip', answered: 1, correct: 1 });
-  assert.equal(c.streak, 7);
-  assert.ok(c.freezeEarned);
-  assert.ok(!(await admin.post('/api/activity', { mode: 'flip', answered: 1, correct: 1 })).freezeEarned);
-  assert.equal((await admin.get('/api/stats')).freezes, 1);
+  for (let o = 1; o <= 6; o++) await db.run('INSERT INTO streak_days (user_id, day, frozen) VALUES (?, ?, 1)', me, day(o, tz));
+  const s = await admin.get('/api/stats');
+  assert.equal(s.streak, 7);
+  assert.ok(s.freezeEarned);
+  assert.equal(s.freezes, 1);
+  assert.ok(!(await admin.get('/api/stats')).freezeEarned);
 
   // A held freeze covers a missed yesterday; a two-day gap with one freeze is not covered.
   const u = (await db.get("INSERT INTO users (email, name, created_at, freezes) VALUES ('freeze@x.io', 'F', ?, 1) RETURNING id", Date.now())).id;
-  for (const o of [2, 3]) await db.run('INSERT INTO activity (user_id, day, xp) VALUES (?, ?, 5)', u, day(o));
+  for (const o of [2, 3]) await db.run('INSERT INTO streak_days (user_id, day, frozen) VALUES (?, ?, 1)', u, day(o));
   assert.equal((await streakFor(u, 'UTC')).streak, 0, 'nothing is spent without spend');
   assert.equal((await streakFor(u, 'UTC', { spend: true })).streak, 3);
   assert.equal((await db.get('SELECT freezes FROM users WHERE id = ?', u)).freezes, 0);
-  await db.run('DELETE FROM activity WHERE user_id = ? AND day IN (?, ?)', u, day(1), day(2));
+  await db.run('DELETE FROM streak_days WHERE user_id = ? AND day IN (?, ?)', u, day(1), day(2));
   await db.run('UPDATE users SET freezes = 1 WHERE id = ?', u);
   assert.equal((await streakFor(u, 'UTC', { spend: true })).streak, 0);
   assert.equal((await db.get('SELECT freezes FROM users WHERE id = ?', u)).freezes, 1);
@@ -212,7 +194,7 @@ test('bulk actions, tags, search, reorder, CSV export', async () => {
   assert.match(csv.data.toString(), /äta,to eat/);
 });
 
-test('uploads: magic bytes, ownership, quota', async () => {
+test('uploads: magic bytes, ownership', async () => {
   const png = fs.readFileSync(new URL('../public/icons/icon-192.png', import.meta.url));
   const up = await admin.ok('POST', '/api/uploads', png, { 'Content-Type': 'image/png' });
   assert.match(up.url, /^\/uploads\/[a-f0-9]{32}\.png$/);
@@ -246,34 +228,25 @@ test('invites, registration, sharing roles and access control', async () => {
   assert.equal((await alice.call('GET', '/api/admin/users')).status, 403);
 });
 
-test('publishing: request, approve, library, save and clone', async () => {
+test('library: owner shares, others save and clone, owner takes it back', async () => {
   const mine = (await alice.post('/api/courses', { title: 'Alice deck' })).id;
   const s = (await alice.post(`/api/courses/${mine}/sets`, { title: 'S' })).id;
   await alice.post(`/api/sets/${s}/cards`, { cards: [{ front: 'a', back: 'b' }, { front: 'c', back: 'd' }] });
-  assert.equal((await alice.post(`/api/courses/${mine}/publish`, {})).status, 'pending');
   assert.equal((await bob.call('GET', `/api/courses/${mine}`)).status, 404);
-  const queue = await admin.get('/api/admin/courses?status=pending');
-  assert.ok(queue.some((c) => c.id === mine));
-  await admin.post(`/api/admin/courses/${mine}/review`, { approve: true });
+  assert.equal((await bob.call('POST', `/api/courses/${mine}/publish`, {})).status, 404, 'only the owner shares');
+  assert.equal((await alice.post(`/api/courses/${mine}/publish`, {})).visibility, 'public');
   const lib = await bob.get('/api/library');
   assert.ok(lib.some((c) => c.id === mine));
   await bob.post(`/api/courses/${mine}/save`, { saved: true });
   assert.ok((await bob.get('/api/courses')).some((c) => c.id === mine));
   const copy = await bob.post(`/api/courses/${mine}/clone`);
-  state.bobCopy = copy.id;
   const cloned = await bob.get(`/api/courses/${copy.id}`);
   assert.equal(cloned.role, 'owner');
   assert.equal(cloned.sets[0].card_count, 2);
-  state.aliceCourse = mine;
-});
-
-test('quotas: default course limit blocks creation, admins unlimited', async () => {
-  await admin.put('/api/admin/settings', { quotaDefaults: { courses: 1 } });
-  assert.equal((await alice.call('POST', '/api/courses', { title: 'Second' })).status, 403);
-  await admin.post('/api/courses', { title: 'Admin is unlimited' });
-  await admin.put('/api/admin/settings', { quotaDefaults: {} });
-  const usage = await alice.get('/api/account/usage');
-  assert.equal(usage.usage.courses, 1);
+  await alice.post(`/api/courses/${mine}/publish`, { publish: false });
+  assert.ok(!(await bob.get('/api/library')).some((c) => c.id === mine));
+  assert.ok(!(await bob.get('/api/courses')).some((c) => c.id === mine), 'saved copy disappears once private');
+  assert.equal((await bob.get(`/api/courses/${copy.id}`)).role, 'owner', 'the clone stays');
 });
 
 test('TOTP 2FA: enable, login needs code, replay blocked, recovery code works', async () => {
@@ -316,36 +289,8 @@ test('require 2FA for admins: password-only admin sessions are restricted', asyn
   assert.equal(blocked.data.code, 'mfa_setup_required');
   assert.ok((await a2.get('/api/account/security')).mfaSetupRequired);
   await admin.put('/api/admin/settings', { require2faAdmins: false });
-  await admin.put(`/api/admin/users/${(await admin.get('/api/admin/users')).find((u) => u.email === 'alice@x.io').id}`, { role: 'teacher' });
+  await admin.put(`/api/admin/users/${(await admin.get('/api/admin/users')).find((u) => u.email === 'alice@x.io').id}`, { role: 'user' });
   state.adminTotp = setup.secret;
-});
-
-test('groups: teacher creates, students join, assignments, insights, challenge', async () => {
-  assert.equal((await bob.call('POST', '/api/groups', { name: 'x' })).status, 403, 'plain users cannot create groups');
-  const g = await alice.post('/api/groups', { name: 'Evening class' });
-  const detail = await alice.get(`/api/groups/${g.id}`);
-  await bob.post('/api/groups/join', { code: detail.invite_code });
-  assert.equal((await bob.call('POST', `/api/groups/${g.id}/assignments`, { title: 'x', courseId: state.aliceCourse })).status, 403);
-  await alice.post(`/api/groups/${g.id}/courses`, { courseId: state.aliceCourse });
-  const a = await alice.post(`/api/groups/${g.id}/assignments`, { title: 'Learn it', courseId: state.aliceCourse, goal: 'study', dueAt: Date.now() + 86_400_000.7 });
-  assert.ok(a.id);
-  assert.ok(Number.isInteger((await alice.get(`/api/groups/${g.id}`)).assignments[0].due_at));
-  const bobView = await bob.get(`/api/groups/${g.id}`);
-  assert.equal(bobView.invite_code, undefined, 'students do not see the invite code');
-  assert.equal(bobView.members.find((m) => m.role === 'teacher').email, undefined, 'students do not see emails');
-  const cardsQ = await bob.get(`/api/study?course=${state.aliceCourse}&mode=srs`);
-  for (const it of cardsQ.items) await bob.post('/api/review', { cardId: it.id, variant: it.variant, rating: 1 });
-  const privateQ = await bob.get(`/api/study?course=${state.bobCopy}&mode=srs`);
-  await bob.post('/api/review', { cardId: privateQ.items[0].id, variant: privateQ.items[0].variant, rating: 3 }); // not a group course
-  const teacherView = await alice.get(`/api/groups/${g.id}`);
-  assert.equal(teacherView.assignments[0].students[0].pct, 100);
-  const ins = await alice.get(`/api/groups/${g.id}/insights`);
-  assert.equal(ins.students[0].reviews7d, cardsQ.items.length);
-  assert.equal(ins.struggling.length, 0, 'needs >= 3 reviews per card');
-  assert.equal((await bob.call('GET', `/api/groups/${g.id}/insights`)).status, 403);
-  const lb = await bob.get(`/api/groups/${g.id}/leaderboard`);
-  assert.equal(lb.members.find((m) => m.me).reviews, cardsQ.items.length);
-  assert.equal((await alice.call('DELETE', `/api/groups/${g.id}/members/me`)).status, 400, 'last teacher cannot leave');
 });
 
 test('course export/import round trip keeps media', async () => {

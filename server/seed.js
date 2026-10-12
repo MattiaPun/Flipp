@@ -1,9 +1,9 @@
-// Demo data for clicking through every feature: users and roles, courses with every card kind, the public library,
-// sharing, groups with assignments, and ~60 days of study history replayed through the real scheduler.
+// Demo data for clicking through every feature: users, courses with every card kind, the library,
+// sharing, and ~60 days of study history replayed through the real scheduler.
 //   npm run seed [-- --for admin@example.com] [-- --reset]
 //   docker compose exec -u node flipp node --disable-warning=ExperimentalWarning server/seed.js
 // Demo users have @demo.flipp.test emails. --reset deletes them; their courses, progress and memberships cascade,
-// and the few SET NULL references (groups, uploads, audit rows) are deleted explicitly.
+// and the few SET NULL references (uploads, audit rows) are deleted explicitly.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,18 +24,18 @@ const DOCKER_HINT = 'docker compose exec -u node flipp node --disable-warning=Ex
 
 // ---------- People ----------
 const USERS = [
-  { key: 'rivera', name: 'Ms. Rivera', role: 'teacher', prefs: { tz: 'America/New_York', dailyGoal: 30 } },
-  { key: 'lars', name: 'Lars Nilsson', prefs: { tz: 'Europe/Stockholm', dailyGoal: 20 } },
-  { key: 'emma', name: 'Emma Johansson', prefs: { tz: 'Europe/Stockholm', dailyGoal: 50 } },
+  { key: 'rivera', name: 'Ms. Rivera', prefs: { tz: 'America/New_York' } },
+  { key: 'lars', name: 'Lars Nilsson', prefs: { tz: 'Europe/Stockholm' } },
+  { key: 'emma', name: 'Emma Johansson', prefs: { tz: 'Europe/Stockholm' } },
   { key: 'liam', name: 'Liam O’Brien', prefs: { tz: 'Europe/Dublin' } },
-  { key: 'sofia', name: 'Sofia Rossi', prefs: { tz: 'Europe/Rome', dailyGoal: 25 } },
-  { key: 'kenji', name: 'Kenji Tanaka', prefs: { tz: 'Asia/Tokyo', dailyGoal: 40 } },
-  { key: 'priya', name: 'Priya Patel', prefs: { tz: 'Europe/London', dailyGoal: 20 } },
+  { key: 'sofia', name: 'Sofia Rossi', prefs: { tz: 'Europe/Rome' } },
+  { key: 'kenji', name: 'Kenji Tanaka', prefs: { tz: 'Asia/Tokyo' } },
+  { key: 'priya', name: 'Priya Patel', prefs: { tz: 'Europe/London' } },
   { key: 'tom', name: 'Tom Becker', prefs: { tz: 'Europe/Berlin' } },
 ];
 
 // Who studies what. streak = consecutive active days up to today; idle = inactive for the last n days.
-// hard: card front -> recall multiplier, so some cards lapse often (teacher insights, leeches).
+// hard: card front -> recall multiplier, so some cards lapse often (leeches).
 const SPANISH_TRAPS = { estar: 0.75, saber: 0.7, conocer: 0.75, 'la cuenta': 0.8 };
 const PLANS = {
   emma: { skill: 0.92, activity: 0.9, streak: 23, newPerDay: 6, courses: ['spanish', 'swedish', 'capitals', 'french'] },
@@ -53,7 +53,7 @@ const PLANS = {
 // Cards are [front, back, extra?]; extra: { notes, mnemonic, example, tags, color: [r, g, b] (generated swatch image) }.
 const COURSES = [
   {
-    key: 'swedish', owner: 'lars', library: 'featured', icon: '🇸🇪', lang: 'sv-SE', tags: 'swedish,language,beginner',
+    key: 'swedish', owner: 'lars', library: 'public', icon: '🇸🇪', lang: 'sv-SE', tags: 'swedish,language,beginner',
     title: 'Swedish for beginners',
     description: 'Your first Swedish words: greetings, numbers, colours, family, food and everyday verbs. Short words, short sentences.',
     sets: [
@@ -207,9 +207,9 @@ const COURSES = [
     ],
   },
   {
-    key: 'french', owner: 'rivera', library: 'pending', icon: '🇫🇷', lang: 'fr-FR', tags: 'french,language,travel',
+    key: 'french', owner: 'rivera', icon: '🇫🇷', lang: 'fr-FR', tags: 'french,language,travel',
     title: 'French phrases',
-    description: 'Survival French for a first trip. Submitted to the library and waiting for review.',
+    description: 'Survival French for a first trip.',
     sets: [
       { title: 'Everyday phrases', description: 'Polite basics and a few questions.', cards: [
         ['Bonjour', 'Hello / Good morning', { notes: 'Say it when you walk into a shop. Skipping it is rude.', tags: 'greeting' }],
@@ -627,10 +627,8 @@ const demoLike = `%${DOMAIN}`;
 
 // Deletes everything the demo created. Returns upload file names to remove once the transaction commits.
 async function wipe(t) {
-  const record = json((await t.get("SELECT value FROM settings WHERE key = 'demo_seed'"))?.value, {});
   const DEMO = 'SELECT id FROM users WHERE email LIKE ?';
   const files = (await t.all(`SELECT name FROM uploads WHERE user_id IN (${DEMO})`, demoLike)).map((r) => r.name);
-  await t.run(`DELETE FROM study_groups WHERE owner_id IN (${DEMO}) OR id = ?`, demoLike, Number(record.group) || 0);
   await t.run(`DELETE FROM audit_log WHERE user_id IN (${DEMO})`, demoLike);
   await t.run(`DELETE FROM uploads WHERE user_id IN (${DEMO})`, demoLike);
   await t.run('DELETE FROM users WHERE email LIKE ?', demoLike);
@@ -669,12 +667,12 @@ export async function seed({ forEmail, reset = false } = {}) {
     result = await db.tx(async (t) => {
       if (reset) old = await wipe(t);
       else if (Number((await t.get('SELECT COUNT(*) AS n FROM users WHERE email LIKE ?', demoLike)).n)) throw new Error('Demo data appeared while seeding; run again');
-      const counts = { users: 0, courses: 0, sets: 0, cards: 0, reviews: 0, groups: 0, uploads: images.size };
+      const counts = { users: 0, courses: 0, sets: 0, cards: 0, reviews: 0, uploads: images.size };
       const ids = { target: target.id };
       const users = {};
       for (const [i, u] of USERS.entries()) {
-        const row = await t.get(`INSERT INTO users (email, name, password_hash, role, email_verified, prefs, created_at) VALUES (?, ?, ?, ?, 1, ?, ?) RETURNING id`,
-          `${u.key}${DOMAIN}`, u.name, hashes.get(u.key), u.role || 'user', JSON.stringify(u.prefs || {}), t0 - (95 - i) * DAY);
+        const row = await t.get(`INSERT INTO users (email, name, password_hash, email_verified, prefs, created_at) VALUES (?, ?, ?, 1, ?, ?) RETURNING id`,
+          `${u.key}${DOMAIN}`, u.name, hashes.get(u.key), JSON.stringify(u.prefs || {}), t0 - (95 - i) * DAY);
         users[u.key] = { ...u, id: row.id, email: `${u.key}${DOMAIN}` };
         ids[u.key] = row.id;
         counts.users++;
@@ -685,10 +683,10 @@ export async function seed({ forEmail, reset = false } = {}) {
 
       // Courses, sets and cards. `course.items` = schedulable (card, variant) pairs in study order.
       const courses = {};
-      const addCourse = async (def, ownerId, created, { title = def.title, visibility = 'private', status = 'none', featured = 0, clonedFrom = null, sets = def.sets } = {}) => {
-        const c = await t.get(`INSERT INTO courses (owner_id, title, description, icon, tags, lang, visibility, publish_status, featured, cloned_from, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-          ownerId, title, def.description, def.icon, def.tags, def.lang || '', visibility, status, featured, clonedFrom, created);
+      const addCourse = async (def, ownerId, created, { title = def.title, visibility = 'private', clonedFrom = null, sets = def.sets } = {}) => {
+        const c = await t.get(`INSERT INTO courses (owner_id, title, description, icon, tags, lang, visibility, cloned_from, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          ownerId, title, def.description, def.icon, def.tags, def.lang || '', visibility, clonedFrom, created);
         const course = { id: c.id, key: def.key, sets: [], items: [], cards: new Map() };
         counts.courses++;
         for (const s of sets) {
@@ -711,10 +709,7 @@ export async function seed({ forEmail, reset = false } = {}) {
         return course;
       };
       for (const [i, def] of COURSES.entries()) {
-        const pub = def.library === 'public' || def.library === 'featured';
-        courses[def.key] = await addCourse(def, ids[def.owner], t0 - (88 - i) * DAY, {
-          visibility: pub ? 'public' : 'private', status: pub ? 'approved' : def.library === 'pending' ? 'pending' : 'none', featured: def.library === 'featured' ? 1 : 0,
-        });
+        courses[def.key] = await addCourse(def, ids[def.owner], t0 - (88 - i) * DAY, { visibility: def.library ? 'public' : 'private' });
       }
       // Emma's private copy of the European capitals, cloned from the library.
       const capitals = COURSES.find((c) => c.key === 'capitals');
@@ -727,37 +722,6 @@ export async function seed({ forEmail, reset = false } = {}) {
       await share('code', 'target', 'viewer', 30);
       await share('biology', 'priya', 'editor', 45);
       await share('code', 'kenji', 'viewer', 20);
-
-      // Groups: the teacher's class (target admin is a member) and the target admin's own club (target is its teacher).
-      const addGroup = async (name, description, owner, created, members, courseKeys, assignments) => {
-        const g = await t.get('INSERT INTO study_groups (name, description, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
-          name, description, ids[owner], crypto.randomBytes(9).toString('base64url'), created);
-        counts.groups++;
-        for (const [user, role] of [[owner, 'teacher'], ...members.map((u) => [u, 'member'])]) {
-          await t.run('INSERT INTO group_members (group_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', g.id, ids[user], role, created + DAY);
-        }
-        for (const key of courseKeys) await t.run('INSERT INTO group_courses (group_id, course_id, added_at) VALUES (?, ?, ?)', g.id, courses[key].id, created + DAY);
-        for (const [title, key, setIndex, goal, dueDays] of assignments) {
-          await t.run('INSERT INTO assignments (group_id, course_id, set_id, title, goal, due_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            g.id, courses[key].id, setIndex === null ? null : courses[key].sets[setIndex].id, title, goal, dueDays === null ? null : startOfDay(t0, targetTz) + dueDays * DAY + 23 * HOUR,
-            ids[owner], created + 2 * DAY);
-        }
-        return g.id;
-      };
-      ids.class = await addGroup('Spanish 101 — Period 3', 'Tuesdays and Thursdays, room 204. Practise a little every day!', 'rivera', t0 - 62 * DAY,
-        ['emma', 'liam', 'sofia', 'kenji', 'priya', 'target'], ['spanish', 'french'], [
-          ['Learn the greetings', 'spanish', 0, 'study', -10],
-          ['Master food & drink', 'spanish', 1, 'master', 5],
-          ['Common verbs', 'spanish', 2, 'study', 12],
-          ['French taster: everyday phrases', 'french', null, 'study', null],
-        ]);
-      ids.club = await addGroup('Swedish study club', 'Fika-powered Swedish practice. New sets every week.', 'target', t0 - 61 * DAY,
-        ['emma', 'tom', 'liam', 'priya'], ['swedish', 'capitals'], [
-          ['Numbers 1–10', 'swedish', 1, 'master', -4],
-          ['Hej! Greetings both ways', 'swedish', 0, 'study', 3],
-          ['Whole course', 'swedish', null, 'study', 21],
-          ['European capitals', 'capitals', 0, 'study', null],
-        ]);
 
       // Personal course settings: the target tags leeches in Spanish instead of suspending them.
       const prefs = { target: { spanish: { leechAction: 'tag', leechThreshold: 6 }, swedish: { newPerDay: 10 } }, emma: { spanish: { retention: 0.92 } } };
@@ -796,7 +760,7 @@ export async function seed({ forEmail, reset = false } = {}) {
         for (const k of plan.courses) {
           const def = COURSES.find((c) => c.key === k);
           const first = reviews.find((r) => r.item.course === k);
-          if (first && def.library && def.library !== 'pending' && ids[def.owner] !== uid) saved.add(`${uid}:${courses[k].id}:${first.ts}`);
+          if (first && def.library && ids[def.owner] !== uid) saved.add(`${uid}:${courses[k].id}:${first.ts}`);
         }
       }
       for (const [user, key] of [['target', 'flags'], ['target', 'history'], ['tom', 'elements'], ['sofia', 'history'], ['liam', 'flags'], ['emma', 'hiragana']]) {
@@ -814,15 +778,7 @@ export async function seed({ forEmail, reset = false } = {}) {
         await t.run('INSERT INTO stars (user_id, card_id) VALUES (?, ?)', ids[user], courses[key].cards.get(front));
       }
 
-      // Match game leaderboards.
-      const matches = [['swedish', 0, 'emma', 19_870, 3], ['swedish', 0, 'target', 24_310, 1], ['swedish', 0, 'tom', 33_050, 6], ['swedish', 0, 'liam', 41_200, 9],
-        ['swedish', 0, 'target', 28_940, 12], ['flags', 0, 'tom', 28_400, 4], ['flags', 0, 'target', 35_900, 2], ['hiragana', 0, 'kenji', 15_200, 5],
-        ['hiragana', 0, 'target', 47_800, 1], ['spanish', 0, 'emma', 22_500, 8], ['spanish', 0, 'sofia', 26_100, 7], ['spanish', 0, 'target', 31_700, 2]];
-      for (const [key, set, user, ms, ago] of matches) {
-        await t.run('INSERT INTO match_scores (set_id, user_id, ms, created_at) VALUES (?, ?, ?, ?)', courses[key].sets[set].id, ids[user], ms, t0 - ago * DAY - 5 * HOUR);
-      }
-
-      await t.run("INSERT INTO settings (key, value) VALUES ('demo_seed', ?)", JSON.stringify({ group: ids.club, target: target.id, at: t0 }));
+      await t.run("INSERT INTO settings (key, value) VALUES ('demo_seed', ?)", JSON.stringify({ target: target.id, at: t0 }));
       return { counts, ids, courses };
     });
   } catch (e) {
@@ -835,16 +791,14 @@ export async function seed({ forEmail, reset = false } = {}) {
   const { ids, courses } = result;
   const as = (key) => ({ id: ids[key], email: `${key}${DOMAIN}` });
   await audit(null, 'auth.login', { user: as('rivera') });
-  await audit(null, 'group.created', { user: as('rivera'), target: `group:${ids.class}` });
-  await audit(null, 'group.joined', { user: as('emma'), target: `group:${ids.class}` });
-  await audit(null, 'course.publish_requested', { user: as('rivera'), target: `course:${courses.french.id}` });
+  await audit(null, 'course.published', { user: as('kenji'), target: `course:${courses.hiragana.id}` });
   await audit(null, 'course.cloned', { user: as('emma'), target: `course:${courses.capitals.id}`, details: { into: courses.clone.id } });
   await audit(null, 'course.shared', { user: as('priya'), target: `course:${courses.math.id}`, details: { with: target.email, role: 'editor' } });
   await audit(null, 'demo.seeded', { user: target, details: { ...result.counts, reset } });
 
   return {
     counts: result.counts, target: target.email, password: PASSWORD,
-    logins: USERS.map((u) => ({ email: `${u.key}${DOMAIN}`, name: u.name, role: u.role || 'user' })),
+    logins: USERS.map((u) => ({ email: `${u.key}${DOMAIN}`, name: u.name })),
   };
 }
 
@@ -857,9 +811,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     if (r.skipped) console.log('Demo data is already seeded (use --reset to delete and recreate it).');
     else {
       const c = r.counts;
-      console.log(`Seeded demo data for ${r.target}: ${c.users} users, ${c.courses} courses, ${c.sets} sets, ${c.cards} cards, ${c.reviews} reviews, ${c.groups} groups, ${c.uploads} images.`);
+      console.log(`Seeded demo data for ${r.target}: ${c.users} users, ${c.courses} courses, ${c.sets} sets, ${c.cards} cards, ${c.reviews} reviews, ${c.uploads} images.`);
       console.log(`\nDemo logins (password for all: ${r.password}):`);
-      for (const u of r.logins) console.log(`  ${u.email.padEnd(28)} ${u.name} (${u.role})`);
+      for (const u of r.logins) console.log(`  ${u.email.padEnd(28)} ${u.name}`);
       console.log(`\nRecreate with --reset. In Docker: ${DOCKER_HINT} --reset`);
     }
     process.exit(0);

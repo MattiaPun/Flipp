@@ -21,7 +21,7 @@ export function Library() {
       <input class="input grow" style="width:auto" type="search" placeholder="Search courses…" value=${q} onInput=${(e) => setQ(e.target.value)} />
       <button class="btn">Search</button>
     </form>
-    ${list.data && !list.data.length && html`<div class="panel empty"><${Illustration} /><p class="muted">${query ? 'No matching courses.' : 'No public courses yet. Course owners can request publication from their course page.'}</p></div>`}
+    ${list.data && !list.data.length && html`<div class="panel empty"><${Illustration} /><p class="muted">${query ? 'No matching courses.' : 'No shared courses yet. Course owners can share theirs from the course menu.'}</p></div>`}
     <div class="grid">${(list.data || []).map((c) => html`<${CourseTile} c=${{ ...c, owned: c.owned }} extra=${html`
       ${c.description && html`<p class="small muted clamp2" style="margin-top:6px">${c.description}</p>`}
       <div class="row" style="margin-top:10px" onClick=${(e) => e.preventDefault()}>

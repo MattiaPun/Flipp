@@ -1,13 +1,12 @@
 // Signed-out screens: first-run setup, sign in (password / passkey / SSO / 2FA step), register, password reset, email confirmation.
 import { html, useState, useEffect } from '/vendor/htm-preact.js';
-import { api, useSubmit, formData, toast, Md } from '/ui.js';
+import { api, useSubmit, formData, toast } from '/ui.js';
 
 const webauthn = () => import('/vendor/webauthn/index.js');
 
 function AuthShell({ me, title, subtitle, children }) {
-  const b = me.branding;
   return html`<div class="auth"><div class="panel col pop" style="gap:16px">
-    <div class="logo" style="font-size:18px">${b.logo ? html`<img src=${b.logo} alt="" class="logo-img" />` : html`<i />`}${b.name}</div>
+    <div class="logo" style="font-size:18px"><i />Flipp</div>
     <div><h1 style="font-size:22px">${title}</h1>${subtitle && html`<p class="muted small" style="margin-top:4px">${subtitle}</p>`}</div>
     ${children}
   </div></div>`;
@@ -60,8 +59,7 @@ export function Login({ me, query, onDone }) {
   const resend = async () => { await api('/auth/verify/resend', { method: 'POST', body: { email: unverified } }); toast('If that account exists, a new link is on its way'); };
   const hasWebauthn = typeof window.PublicKeyCredential === 'function';
 
-  return html`<${AuthShell} me=${me} title="Sign in" subtitle=${me.branding.welcome ? '' : 'Pick up where you left off.'}>
-    ${me.branding.welcome && html`<${Md} class="small muted" src=${me.branding.welcome} />`}
+  return html`<${AuthShell} me=${me} title="Sign in" subtitle="Pick up where you left off.">
     ${query.error && html`<p class="error">Single sign-on failed. Try again, or ask your admin to check the server logs.</p>`/* fixed text: the hash is attacker-controllable */}
     <${SsoButton} me=${me} />
     ${me.oidc && html`<div class="divider">or</div>`}

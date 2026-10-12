@@ -18,7 +18,7 @@ export function Course({ me, id }) {
   const run = (p, msg) => p.then(() => { reload(); if (msg) toast(msg); }, (e) => toast(e.message));
   const del = async () => { if (confirm(`Delete "${c.title}" and all its sets and cards?`)) { await api(`/courses/${id}`, { method: 'DELETE' }); location.hash = '#/'; } };
   const clone = async () => { try { const r = await api(`/courses/${id}/clone`, { method: 'POST' }); toast('Copied into your courses'); location.hash = `#/course/${r.id}`; } catch (e) { toast(e.message); } };
-  const publish = (on) => run(api(`/courses/${id}/publish`, { method: 'POST', body: { publish: on } }).then((r) => toast(r.status === 'pending' ? 'Sent to an admin for review' : r.status === 'approved' ? 'Published to the library' : 'Removed from the library')));
+  const publish = (on) => run(api(`/courses/${id}/publish`, { method: 'POST', body: { publish: on } }), on ? 'Shared in the library' : 'Removed from the library');
   const due = c.sets.reduce((n, s) => n + Number(s.due_count), 0);
   const total = c.sets.reduce((n, s) => n + Number(s.card_count), 0);
   const isPublicGuest = c.role === 'public';
@@ -34,9 +34,7 @@ export function Course({ me, id }) {
             ${c.description && html`<p class="muted" style="margin-top:4px">${c.description}</p>`}
             <div class="row" style="gap:4px;margin-top:8px">
               ${c.visibility === 'public' && html`<span class="tag">Public</span>`}
-              ${c.publish_status === 'pending' && html`<span class="tag">Waiting for review</span>`}
-              ${c.publish_status === 'rejected' && html`<span class="tag">Publication declined</span>`}
-              ${c.role !== 'owner' && html`<span class="tag">${c.role === 'admin' ? 'admin access' : c.role === 'group' ? 'via group' : c.role === 'public' ? `by ${c.owner_name}` : `shared · ${c.role}`}</span>`}
+              ${c.role !== 'owner' && html`<span class="tag">${c.role === 'admin' ? 'admin access' : c.role === 'public' ? `by ${c.owner_name}` : `shared · ${c.role}`}</span>`}
               ${c.tags && c.tags.split(',').map((t) => html`<span class="tag">${t}</span>`)}
             </div>
           </div>
@@ -44,8 +42,7 @@ export function Course({ me, id }) {
             ${c.canEdit && html`<button onClick=${() => setEditing(true)}>Edit details</button>`}
             <button onClick=${() => setModal('prefs')}>Study settings</button>
             ${c.canManage && html`<button onClick=${() => setModal('share')}>Share…</button>`}
-            ${c.canManage && c.visibility !== 'public' && c.publish_status !== 'pending' && html`<button onClick=${() => publish(true)}>${me.user.role === 'admin' ? 'Publish to library' : 'Request publication'}</button>`}
-            ${c.canManage && (c.visibility === 'public' || c.publish_status === 'pending') && html`<button onClick=${() => publish(false)}>${c.visibility === 'public' ? 'Remove from library' : 'Cancel publication request'}</button>`}
+            ${c.canManage && html`<button onClick=${() => publish(c.visibility !== 'public')}>${c.visibility === 'public' ? 'Remove from library' : 'Share in library'}</button>`}
             ${isPublicGuest && html`<button onClick=${() => run(api(`/courses/${id}/save`, { method: 'POST', body: { saved: !c.saved } }), c.saved ? 'Removed from your courses' : 'Added to your courses')}>${c.saved ? 'Remove from my courses' : 'Add to my courses'}</button>`}
             ${['viewer', 'editor'].includes(c.role) && html`<button onClick=${() => { if (confirm('Leave this shared course?')) api(`/courses/${id}/members/me`, { method: 'DELETE' }).then(() => { location.hash = '#/'; }, (e) => toast(e.message)); }}>Leave course</button>`}
             <button onClick=${clone}>Make a copy</button>
@@ -57,8 +54,6 @@ export function Course({ me, id }) {
       <a class="btn primary" href=${`#/study?course=${id}&mode=learn`}>${due ? `Learn · ${due} due` : 'Learn course'}</a>
       <a class="btn" href=${`#/study?course=${id}&mode=flip`}>Flashcards</a>
       <a class="btn" href=${`#/study?course=${id}&mode=write`}>Write</a>
-      <a class="btn" href=${`#/study?course=${id}&mode=test`}>Test</a>
-      <a class="btn" href=${`#/study?course=${id}&mode=survival`}>Survival</a>
       <a class="btn ghost" href=${`#/study?course=${id}&mode=cram`}>Cram</a>
     </div>`}
     <div class="section">

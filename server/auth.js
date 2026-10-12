@@ -124,7 +124,6 @@ export const requireUser = (req, _res, next) => {
   next();
 };
 export const requireAdmin = (req, _res, next) => next(req.user?.role === 'admin' ? undefined : httpError(403, 'Admins only'));
-export const requireTeacher = (req, _res, next) => next(['admin', 'teacher'].includes(req.user?.role) ? undefined : httpError(403, 'Teachers only'));
 
 // ---------- Rate limiting ----------
 // Simple in-memory sliding-window limiter, keyed by client IP + route.

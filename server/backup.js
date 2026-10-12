@@ -6,20 +6,17 @@ import path from 'node:path';
 import { db, isPg, TABLES, SCHEMA_VERSION, BACKUP_DIR, UPLOAD_DIR, getJsonSetting, setSetting } from './db.js';
 import { tarGzWriter, readTarGz } from './archive.js';
 import { now } from './util.js';
-import { resetBrandingCache } from './branding.js';
 
 const CHUNK = 5000;
-const SERIAL_TABLES = ['users', 'courses', 'sets', 'cards', 'reviews', 'match_scores', 'study_groups', 'assignments', 'audit_log'];
+const SERIAL_TABLES = ['users', 'courses', 'sets', 'cards', 'reviews', 'audit_log'];
 export const BACKUP_NAME = /^flipp-(auto|manual|upload)-[0-9TZ_.-]+\.tar\.gz$/;
 const stamp = () => new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
 
 // Primary key columns per table, for stable pagination.
 const ORDER = {
   settings: 'key', users: 'id', invites: 'code', courses: 'id', sets: 'id', cards: 'id', progress: 'user_id, card_id, variant',
-  stars: 'user_id, card_id', reviews: 'id', match_scores: 'id', course_prefs: 'user_id, course_id', saved_courses: 'user_id, course_id',
-  course_members: 'course_id, user_id', study_groups: 'id', group_members: 'group_id, user_id', group_courses: 'group_id, course_id',
-  assignments: 'id', recovery_codes: 'user_id, code_hash', passkeys: 'id', audit_log: 'id', uploads: 'name', push_subscriptions: 'endpoint',
-  activity: 'user_id, day',
+  stars: 'user_id, card_id', reviews: 'id', streak_days: 'user_id, day', course_prefs: 'user_id, course_id', saved_courses: 'user_id, course_id',
+  course_members: 'course_id, user_id', recovery_codes: 'user_id, code_hash', passkeys: 'id', audit_log: 'id', uploads: 'name', push_subscriptions: 'endpoint',
 };
 
 // Maintenance mode blocks all other API traffic while a restore rewrites the database.
@@ -168,7 +165,6 @@ export async function restoreBackup(file) {
     // Swap the uploads directory contents.
     for (const f of await fsp.readdir(UPLOAD_DIR)) await fsp.rm(path.join(UPLOAD_DIR, f), { force: true, recursive: true });
     for (const f of await fsp.readdir(newUploads)) await fsp.rename(path.join(newUploads, f), path.join(UPLOAD_DIR, f));
-    resetBrandingCache();
     return { restoredAt: now(), manifest };
   } finally {
     await fsp.rm(work, { recursive: true, force: true });

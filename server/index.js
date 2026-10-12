@@ -11,9 +11,7 @@ import { studyRouter } from './routes/study.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { adminRouter } from './routes/admin.js';
 import { transferRouter } from './routes/transfer.js';
-import { groupsRouter } from './routes/groups.js';
 import { pushRouter } from './routes/push.js';
-import { branding } from './branding.js';
 import { startJobs } from './jobs.js';
 import { maintenance } from './backup.js';
 
@@ -64,36 +62,8 @@ app.use('/api/auth', authRouter);
 app.use('/api', requireUser);
 app.use('/api/account', accountRouter);
 app.use('/api/admin', adminRouter);
-app.use('/api', transferRouter, contentRouter, studyRouter, uploadsRouter, groupsRouter, pushRouter);
+app.use('/api', transferRouter, contentRouter, studyRouter, uploadsRouter, pushRouter);
 app.use('/api', (_req, _res, next) => next(httpError(404, 'Not found')));
-
-// ---------- Branding-aware PWA bits ----------
-app.get('/manifest.webmanifest', async (_req, res) => {
-  const b = await branding();
-  const icons = [
-    { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-    { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-    { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-  ];
-  if (b.logo) icons.unshift({ src: b.logo, sizes: 'any', purpose: 'any' });
-  res.type('application/manifest+json').set('Cache-Control', 'no-cache').send(JSON.stringify({
-    name: b.name, short_name: b.name.slice(0, 12), description: 'Playful, self-hosted flashcards with spaced repetition.',
-    start_url: '/', scope: '/', display: 'standalone', orientation: 'any', background_color: '#f7f3ea', theme_color: '#e8492a', icons,
-  }));
-});
-app.get('/branding.css', async (_req, res) => {
-  const { accent } = await branding();
-  if (!/^#[0-9a-fA-F]{6}$/.test(accent)) return res.type('text/css').set('Cache-Control', 'no-cache').send('');
-  // Pick black or white text for buttons on the accent color (WCAG relative luminance).
-  const lin = (c) => { const v = parseInt(c, 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-  const L = 0.2126 * lin(accent.slice(1, 3)) + 0.7152 * lin(accent.slice(3, 5)) + 0.0722 * lin(accent.slice(5, 7));
-  res.type('text/css').set('Cache-Control', 'no-cache').send(`:root{--brand:${accent};--brand-text:${L > 0.4 ? '#0b0b0c' : '#ffffff'}}`);
-});
-app.get('/icons/apple-touch-icon.png', async (req, res, next) => {
-  const { logo } = await branding();
-  if (logo) return res.sendFile(path.join(UPLOAD_DIR, path.basename(logo)));
-  next();
-});
 
 // ---------- Static: app shell, vendored libs, uploads ----------
 const vendor = { 'htm-preact.js': 'htm/preact/standalone.module.js', 'marked.js': 'marked/lib/marked.esm.js', 'purify.js': 'dompurify/dist/purify.es.mjs' };

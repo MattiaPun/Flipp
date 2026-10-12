@@ -7,7 +7,6 @@ import { PUBLIC_URL } from '../auth.js';
 import { registerJob } from '../jobs.js';
 import { userTz, DUE } from '../study-core.js';
 import { READABLE, readableParams } from '../access.js';
-import { branding } from '../branding.js';
 
 export const pushRouter = Router();
 
@@ -62,7 +61,7 @@ pushRouter.post('/push/test', async (req, res) => {
   const subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', req.user.id);
   if (!subs.length) throw httpError(400, 'No device is subscribed yet');
   let sent = 0;
-  for (const s of subs) if (await send(s, { title: (await branding()).name, body: 'Reminders are working 🎉', url: '/#/' })) sent++;
+  for (const s of subs) if (await send(s, { title: 'Flipp', body: 'Reminders are working 🎉', url: '/#/' })) sent++;
   res.json({ sent });
 });
 
@@ -88,9 +87,8 @@ registerJob('reminders', async () => {
     if (local.minutes > h * 60 + m + 120) continue; // server was down at reminder time; don't nag hours late
     const due = await dueCount(u);
     if (!due) continue;
-    const name = (await branding()).name;
     for (const s of await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', u.id)) {
-      await send(s, { title: name, body: `${due} card${due === 1 ? '' : 's'} due today. A few minutes keeps your streak alive.`, url: '/#/study?mode=learn' });
+      await send(s, { title: 'Flipp', body: `${due} card${due === 1 ? '' : 's'} due today. A few minutes keeps your streak alive.`, url: '/#/study' });
     }
   }
 });

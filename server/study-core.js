@@ -33,12 +33,12 @@ export async function userTz(userId) {
 export const MAX_FREEZES = 2;
 const DAY = 86_400_000;
 
-// Streak: consecutive local days with a review, XP or a freeze. With `spend`, a gap of missed days right
+// Streak: consecutive local days with a review or a freeze. With `spend`, a gap of missed days right
 // before today is covered by held freezes when there are enough of them and the streak before the gap is alive.
 export async function streakFor(userId, tz, { spend = false } = {}) {
   const t = now(), since = t - 400 * DAY;
   const days = new Set((await db.all('SELECT ts FROM reviews WHERE user_id = ? AND ts > ?', userId, since)).map((r) => dayKey(r.ts, tz)));
-  for (const a of await db.all('SELECT day FROM activity WHERE user_id = ? AND day > ? AND (xp > 0 OR frozen = 1)', userId, dayKey(since, tz))) days.add(a.day);
+  for (const a of await db.all('SELECT day FROM streak_days WHERE user_id = ? AND day > ? AND frozen = 1', userId, dayKey(since, tz))) days.add(a.day);
   const key = (o) => dayKey(t - o * DAY, tz);
   if (spend) {
     let missed = 0;
@@ -49,7 +49,7 @@ export async function streakFor(userId, tz, { spend = false } = {}) {
       // Rows that already exist were spent by a concurrent request, so only newly inserted days are paid for.
       const ok = await db.tx(async (tx) => {
         let added = 0;
-        for (const d of gap) added += (await tx.run('INSERT INTO activity (user_id, day, frozen) VALUES (?, ?, 1) ON CONFLICT (user_id, day) DO NOTHING', userId, d)).changes;
+        for (const d of gap) added += (await tx.run('INSERT INTO streak_days (user_id, day, frozen) VALUES (?, ?, 1) ON CONFLICT (user_id, day) DO NOTHING', userId, d)).changes;
         if (added && !(await tx.run('UPDATE users SET freezes = freezes - ? WHERE id = ? AND freezes >= ?', added, userId, added)).changes) throw Object.assign(new Error('no freezes'), { quiet: true });
         return true;
       }).catch((e) => { if (e.quiet) return false; throw e; });
@@ -59,4 +59,12 @@ export async function streakFor(userId, tz, { spend = false } = {}) {
   let streak = 0;
   for (let i = days.has(key(0)) ? 0 : 1; days.has(key(i)); i++) streak++;
   return { streak, days, today: key(0) };
+}
+
+// Pays out one streak freeze (up to MAX_FREEZES) the first time a day lands on a 7-day streak milestone.
+export async function earnFreeze(userId, streak, day) {
+  if (!(streak > 0 && streak % 7 === 0)) return false;
+  await db.run('INSERT INTO streak_days (user_id, day) VALUES (?, ?) ON CONFLICT (user_id, day) DO NOTHING', userId, day);
+  if (!(await db.run('UPDATE streak_days SET freeze_earned = 1 WHERE user_id = ? AND day = ? AND freeze_earned = 0', userId, day)).changes) return false;
+  return (await db.run('UPDATE users SET freezes = freezes + 1 WHERE id = ? AND freezes < ?', userId, MAX_FREEZES)).changes > 0;
 }

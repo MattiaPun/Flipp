@@ -73,7 +73,7 @@ test('learn mode: interval previews, keyboard rating, undo, summary', async () =
   await expect(page.getByText('Session complete')).toBeVisible();
 });
 
-test('write mode: hints, diff, multiple choice, test, cram, match', async () => {
+test('write mode: hints, diff, multiple choice, cram', async () => {
   await page.goto('/#/');
   await page.getByRole('link', { name: /Swedish/ }).first().click();
   await page.getByRole('link', { name: /Verbs/ }).click();
@@ -89,48 +89,12 @@ test('write mode: hints, diff, multiple choice, test, cram, match', async () => 
   await page.keyboard.press('1');
   await expect(page.getByRole('button', { name: /Continue/ })).toBeVisible();
 
-  await page.goto(page.url().replace('mode=choice', 'mode=test'));
-  await page.getByRole('button', { name: /Submit test/ }).click();
-  await expect(page.locator('h1', { hasText: '%' })).toBeVisible();
-
-  await page.goto(page.url().replace('mode=test', 'mode=cram'));
+  await page.goto(page.url().replace('mode=choice', 'mode=cram'));
   await expect(page.locator('.face.front').first()).toBeVisible();
-
-  await page.goto(page.url().replace('mode=cram', 'mode=match'));
-  await expect(page.locator('.mtile')).toHaveCount(12);
 });
 
-test('survival, listening, lesson, XP and daily quests', async () => {
-  await page.goto('/#/');
-  await page.getByRole('link', { name: /Swedish/ }).first().click();
-  await page.getByRole('link', { name: /Verbs/ }).click();
-  await page.locator('a.mode', { hasText: 'Survival' }).click();
-  await expect(page.locator('.lives .on')).toHaveCount(3);
-  // Answer "1" on choices and submit typed questions empty until the lives run out.
-  for (let i = 0; i < 60 && !(await page.locator('h1', { hasText: 'Game over' }).isVisible()); i++) {
-    if (await page.locator('.choice').first().isVisible()) await page.keyboard.press('1');
-    else if (await page.getByLabel('Your answer').isVisible()) await page.keyboard.press('Enter');
-    await page.getByRole('button', { name: /Continue/ }).click();
-  }
-  await expect(page.locator('h1', { hasText: 'Game over' })).toBeVisible();
-  await expect(page.locator('.xp-gain')).toBeVisible();
-
-  await page.goto(page.url().replace('mode=survival', 'mode=listen'));
-  await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
-  await page.getByLabel('Your answer').fill('nope');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('.result')).toContainText('Meaning');
-
-  await page.goto(page.url().replace('mode=listen', 'mode=lesson') + '&unit=0');
-  await expect(page.getByText(/Lesson · 0 \//)).toBeVisible();
-
-  await page.goto('/#/');
-  await expect(page.getByText('Daily quests')).toBeVisible();
-  await expect(page.locator('.stat.xp b')).not.toHaveText('0');
-});
-
-test('stats, library, tags, leeches, groups pages render', async () => {
-  for (const [hash, text] of [['#/stats', 'Activity'], ['#/library', 'Library'], ['#/tags', '#verbs'], ['#/leeches', 'No leeches'], ['#/groups', 'Groups']]) {
+test('stats, library, tags, leeches pages render', async () => {
+  for (const [hash, text] of [['#/stats', 'Activity'], ['#/library', 'Library'], ['#/tags', '#verbs'], ['#/leeches', 'No leeches']]) {
     await page.goto(`/${hash}`);
     await expect(page.getByText(text).first()).toBeVisible();
   }
@@ -175,7 +139,7 @@ test('settings: 2FA setup shows QR; passkey register + sign in', async () => {
 });
 
 test('admin console tabs', async () => {
-  for (const tab of ['overview', 'users', 'access', 'library', 'storage', 'backups', 'branding', 'audit']) {
+  for (const tab of ['overview', 'users', 'access', 'storage', 'backups', 'audit']) {
     await page.goto(`/#/admin?tab=${tab}`);
     await expect(page.locator('.tab.on')).toBeVisible();
   }

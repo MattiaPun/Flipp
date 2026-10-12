@@ -60,30 +60,21 @@ test('seeds every feature for the admin, idempotently, and --reset keeps real da
   assert.equal(uploads.length, 11);
   for (const u of uploads) assert.ok(fs.existsSync(path.join(UPLOAD_DIR, u.name)));
 
-  // Through the API, as the admin and the teacher would see it.
+  // Through the API, as the admin would see it.
   const asAdmin = await login('admin@x.io', 'password123');
   const stats = await asAdmin('/api/stats');
   assert.ok(stats.streak >= 10 && stats.due > 0 && stats.studiedToday, JSON.stringify(stats));
   const library = await asAdmin('/api/library');
   assert.equal(library[0].title, 'Swedish for beginners');
-  assert.equal(library[0].featured, 1);
   assert.ok(library.length >= 6);
-  const groups = (await asAdmin('/api/groups')).groups;
-  assert.deepEqual(groups.map((g) => g.role).sort(), ['member', 'teacher']);
-  const club = groups.find((g) => g.role === 'teacher');
-  assert.ok((await asAdmin(`/api/groups/${club.id}/insights`)).students.some((s) => s.reviews7d > 0));
   const courses = await asAdmin('/api/courses');
   assert.ok(courses.some((c) => c.member_role === 'editor') && courses.some((c) => c.member_role === 'viewer'));
-  const asTeacher = await login('rivera@demo.flipp.test', 'demo1234');
-  const cls = (await asTeacher('/api/groups')).groups[0];
-  const board = await asTeacher(`/api/groups/${cls.id}/leaderboard`);
-  assert.ok(board.members.filter((m) => m.reviews > 0).length >= 3, 'weekly challenge has data');
+  assert.ok(await login('rivera@demo.flipp.test', 'demo1234'), 'demo users can sign in');
 
   const oldFiles = uploads.map((u) => u.name);
   await seed({ reset: true });
   assert.equal(await n('SELECT COUNT(*) AS n FROM courses'), 13);
   assert.equal(await n("SELECT COUNT(*) AS n FROM users WHERE email LIKE '%@demo.flipp.test'"), 8);
-  assert.equal(await n('SELECT COUNT(*) AS n FROM study_groups'), 2);
   assert.equal(await n("SELECT COUNT(*) AS n FROM courses WHERE title = 'Mine'"), 1, 'real data untouched');
   assert.ok(oldFiles.every((f) => !fs.existsSync(path.join(UPLOAD_DIR, f))), 'old swatches removed');
   assert.equal(fs.readdirSync(UPLOAD_DIR).length, 11);

@@ -9,7 +9,6 @@ import { Settings } from '/pages/settings.js';
 import { Admin } from '/pages/admin.js';
 import { Library, Tags, Leeches } from '/pages/browse.js';
 import { Stats } from '/pages/stats.js';
-import { Groups, Group, JoinGroup } from '/pages/groups.js';
 import { flushReviews, pendingCount, setOfflineUser } from '/offline.js';
 
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
@@ -58,7 +57,7 @@ function Palette({ me, onClose }) {
   const commands = [
     { label: 'Review due cards', href: '#/study?mode=learn' },
     { label: 'Home', href: '#/' }, { label: 'Statistics', href: '#/stats' }, { label: 'Library', href: '#/library' },
-    { label: 'Groups', href: '#/groups' }, { label: 'Tags', href: '#/tags' }, { label: 'Leeches', href: '#/leeches' }, { label: 'Settings', href: '#/settings' },
+    { label: 'Tags', href: '#/tags' }, { label: 'Leeches', href: '#/leeches' }, { label: 'Settings', href: '#/settings' },
     ...(me.user.role === 'admin' ? [{ label: 'Admin', href: '#/admin' }, { label: 'Admin · Audit log', href: '#/admin?tab=audit' }, { label: 'Admin · Backups', href: '#/admin?tab=backups' }] : []),
     { label: 'Toggle dark / light theme', run: () => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light') },
   ].filter((c) => !q || c.label.toLowerCase().includes(q.toLowerCase()));
@@ -104,11 +103,10 @@ function Shell({ me, route, children, study }) {
   }, []);
   const homeish = !top || ['course', 'set'].includes(top);
   const link = (href, label, on) => html`<a class="navlink ${on ? 'on' : ''}" href=${href} aria-current=${on ? 'page' : undefined}>${label}</a>`;
-  const b = me.branding;
   return html`
     <header class="topbar">
-      <a class="logo" href="#/">${b.logo ? html`<img src=${b.logo} alt="" class="logo-img" />` : html`<i />`}${b.name}</a>
-      <nav>${link('#/', 'Home', homeish)}${link('#/study?mode=learn', 'Review', top === 'study')}${link('#/stats', 'Stats', top === 'stats')}${link('#/library', 'Library', top === 'library')}${link('#/groups', 'Groups', top === 'groups' || top === 'group')}${me.user.role === 'admin' && link('#/admin', 'Admin', top === 'admin')}</nav>
+      <a class="logo" href="#/"><i />Flipp</a>
+      <nav>${link('#/', 'Home', homeish)}${link('#/study?mode=learn', 'Review', top === 'study')}${link('#/stats', 'Stats', top === 'stats')}${link('#/library', 'Library', top === 'library')}${me.user.role === 'admin' && link('#/admin', 'Admin', top === 'admin')}</nav>
       <span class="spacer" />
       ${(!online || pending > 0) && html`<span class="tag ${online ? '' : 'warn'}" title="Reviews made offline sync automatically">${online ? `Syncing ${pending}…` : `Offline${pending ? ` · ${pending} queued` : ''}`}</span>`}
       <button class="btn ghost search-btn" onClick=${() => setPalette(true)} aria-label="Search (Ctrl+K)"><${Icon} name="search" /><span class="hide-sm">Search</span><kbd class="hide-sm">⌘K</kbd></button>
@@ -136,7 +134,6 @@ function App() {
     try { if (localStorage.getItem('flipp.uid') !== uid) { caches?.delete('flipp-api'); localStorage.setItem('flipp.uid', uid); } } catch {}
     setOfflineUser(m.user?.id);
     setMe(m); setErr('');
-    document.title = m.branding.name;
     if (m.user) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (tz && localStorage.getItem('flipp.tzSynced') !== tz) api('/account/prefs', { method: 'PUT', body: { tz } }).then(() => localStorage.setItem('flipp.tzSynced', tz), () => {});
@@ -171,14 +168,11 @@ function App() {
     : page === 'set' ? html`<${SetPage} key=${id} id=${id} />`
     : page === 'study' ? html`<${Study} key=${JSON.stringify(q)} query=${q} />`
     : page === 'settings' ? html`<${Settings} me=${me} onLogout=${onLogout} reloadMe=${load} />`
-    : page === 'admin' ? html`<${Admin} me=${me} query=${q} reloadMe=${load} />`
+    : page === 'admin' ? html`<${Admin} me=${me} query=${q} />`
     : page === 'library' ? html`<${Library} />`
     : page === 'tags' ? html`<${Tags} />`
     : page === 'leeches' ? html`<${Leeches} />`
     : page === 'stats' ? html`<${Stats} />`
-    : page === 'groups' ? html`<${Groups} me=${me} />`
-    : page === 'group' ? html`<${Group} key=${id} me=${me} id=${id} />`
-    : page === 'join' ? html`<${JoinGroup} code=${id} />`
     : html`<${Home} me=${me} />`;
   return html`<${Shell} me=${me} route=${route} study=${page === 'study' && !forced}>${view}<//>`;
 }

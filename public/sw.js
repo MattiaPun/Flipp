@@ -1,11 +1,11 @@
 // Service worker: precached app shell (stale-while-revalidate), network-first caching of the study data you
 // opened recently (so you can keep studying offline), immutable uploads cache-first, and push notifications.
-const CACHE = 'flipp-v6';
+const CACHE = 'flipp-v7';
 const API_CACHE = 'flipp-api';
 const SHELL = [
   '/', '/index.html', '/styles.css', '/theme.js', '/app.js', '/ui.js', '/md.js', '/lib.js', '/srs.js', '/offline.js',
   '/pages/auth.js', '/pages/home.js', '/pages/course.js', '/pages/set.js', '/pages/study.js', '/pages/settings.js', '/pages/admin.js',
-  '/pages/backups.js', '/pages/browse.js', '/pages/stats.js', '/pages/groups.js', '/pages/transfer.js', '/pages/reminders.js', '/pages/path.js',
+  '/pages/backups.js', '/pages/browse.js', '/pages/stats.js', '/pages/transfer.js', '/pages/reminders.js',
   '/icons/icon.svg', '/icons/icon-192.png', '/vendor/htm-preact.js', '/vendor/marked.js', '/vendor/purify.js',
   '/vendor/katex/katex.mjs', '/vendor/katex/katex.min.css', '/vendor/figtree/wght.css', '/vendor/figtree/files/figtree-latin-wght-normal.woff2', '/vendor/fraunces/opsz.css', '/vendor/fraunces/files/fraunces-latin-opsz-normal.woff2',
 ];

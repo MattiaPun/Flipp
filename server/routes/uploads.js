@@ -5,7 +5,6 @@ import express, { Router } from 'express';
 import { db, UPLOAD_DIR } from '../db.js';
 import { httpError, now } from '../util.js';
 import { rateLimit } from '../auth.js';
-import { checkQuota } from '../quota.js';
 import { sniff, maxBytes } from '../storage.js';
 
 export const uploadsRouter = Router();
@@ -19,7 +18,6 @@ uploadsRouter.post('/uploads', rateLimit(60, 60_000),
     const type = sniff(buf);
     if (!type) throw httpError(415, 'Only PNG, JPEG, GIF, WebP images or WebM, Ogg, MP3, M4A, WAV audio are allowed');
     if (buf.length > maxBytes(type.kind)) throw httpError(413, `File too large (max ${maxBytes(type.kind) / 1048576} MB for ${type.kind})`);
-    await checkQuota(req.user.id, 'storageMb', buf.length);
     const name = `${crypto.randomBytes(16).toString('hex')}.${type.ext}`;
     await fs.writeFile(path.join(UPLOAD_DIR, name), buf);
     await db.run('INSERT INTO uploads (name, user_id, size, kind, created_at) VALUES (?, ?, ?, ?, ?)', name, req.user.id, buf.length, type.kind, now());

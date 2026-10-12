@@ -1,6 +1,6 @@
-// Settings: appearance & study feedback, profile, password, two-factor, passkeys, sessions, usage, export, delete account.
+// Settings: appearance & study feedback, profile, password, two-factor, passkeys, sessions, export, delete account.
 import { html, useState } from '/vendor/htm-preact.js';
-import { api, useAsync, useSubmit, formData, prefs, toast, setTheme, currentTheme, Modal, fmtBytes, fmtDate, timeAgo, Icon } from '/ui.js';
+import { api, useAsync, useSubmit, formData, prefs, toast, setTheme, currentTheme, Modal, fmtDate, timeAgo, Icon } from '/ui.js';
 import { ReminderSettings } from '/pages/reminders.js';
 import { Optimizer } from '/pages/stats.js';
 
@@ -8,11 +8,9 @@ const webauthn = () => import('/vendor/webauthn/index.js');
 
 export function Settings({ me, onLogout, reloadMe }) {
   const [theme, setT] = useState(currentTheme());
-  const [local, setLocal] = useState({ sound: prefs.get('sound', true), haptics: prefs.get('haptics', true), speech: prefs.get('speech', false) });
+  const [local, setLocal] = useState({ sound: prefs.get('sound', true), haptics: prefs.get('haptics', true) });
   const toggle = (k) => (e) => { prefs.set(k, e.target.checked); setLocal({ ...local, [k]: e.target.checked }); };
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); };
-  const server = useAsync(() => api('/account/prefs'));
-  const saveGoal = async (e) => { await api('/account/prefs', { method: 'PUT', body: { dailyGoal: Number(e.target.value) || 0 } }).then(() => toast('Daily goal saved'), (err) => toast(err.message)); };
 
   if (me.user.mfaSetupRequired) {
     return html`<div class="stack">
@@ -31,15 +29,11 @@ export function Settings({ me, onLogout, reloadMe }) {
         <option value="system">Match system</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
       <label class="check"><input type="checkbox" checked=${local.sound} onChange=${toggle('sound')} /> Sound effects</label>
       <label class="check"><input type="checkbox" checked=${local.haptics} onChange=${toggle('haptics')} /> Haptics (where supported)</label>
-      <label class="check"><input type="checkbox" checked=${local.speech} onChange=${toggle('speech')} /> Answer by speaking in Write mode</label>
-      <p class="small faint" style="margin-top:-6px">Uses your browser's speech recognition. In Chrome and Safari, the audio is processed by Google or Apple servers. Not available in Firefox.</p>
-      ${server.data && html`<label class="field" style="max-width:220px">Daily goal (reviews)<input class="input" type="number" min="0" max="1000" value=${server.data.dailyGoal || 0} onChange=${saveGoal} /></label>`}
     </div>
     <${ReminderSettings} />
     <${Optimizer} />
     <${Profile} me=${me} reloadMe=${reloadMe} />
     <${Security} me=${me} reloadMe=${reloadMe} />
-    <${Usage} />
     <${DataAndDeletion} me=${me} onLogout=${onLogout} />
     <div class="row">${me.user.role === 'admin' && html`<a class="btn" href="#/admin">Admin</a>`}<button class="btn danger" onClick=${logout}>Sign out</button></div>
   </div>`;
@@ -155,22 +149,6 @@ function Security({ me, reloadMe }) {
         <button class="btn danger" disabled=${dis.busy}>Disable</button>
       </form>
     <//>`}
-  </div>`;
-}
-
-function Usage() {
-  const { data } = useAsync(() => api('/account/usage'));
-  if (!data) return null;
-  const { usage: u, limits: l } = data;
-  const bar = (label, used, limit, fmt = (x) => x) => html`<div>
-    <div class="row between small"><span>${label}</span><span class="muted">${fmt(used)}${limit ? ` of ${fmt(limit)}` : ''}</span></div>
-    ${limit > 0 && html`<div class="progress" style="margin-top:6px"><i style=${{ width: Math.min(100, (used / limit) * 100) + '%' }} /></div>`}
-  </div>`;
-  return html`<div class="panel col">
-    <div class="section-title" style="margin:0">Usage</div>
-    ${bar('Storage', u.storageBytes, l.storageMb * 1048576, fmtBytes)}
-    ${bar('Courses', u.courses, l.courses)}
-    ${bar('Cards', u.cards, l.cards)}
   </div>`;
 }
 

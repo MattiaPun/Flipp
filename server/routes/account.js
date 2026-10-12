@@ -11,8 +11,6 @@ import { audit } from '../audit.js';
 import { newSecret, otpauthUrl, verifyTotp } from '../totp.js';
 import { tarGzWriter } from '../archive.js';
 import { rp } from './auth.js';
-import { branding } from '../branding.js';
-import { limitsFor, usage } from '../quota.js';
 import { fitInWorker, countLongTerm, MIN_REVIEWS } from '../optimizer.js';
 
 export const accountRouter = Router();
@@ -50,7 +48,6 @@ accountRouter.put('/prefs', async (req, res) => {
     if (b.reminder !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(b.reminder)) throw httpError(400, 'Reminder must be HH:MM');
     p.reminder = b.reminder;
   }
-  if (b.dailyGoal !== undefined) p.dailyGoal = Math.max(0, Math.min(1000, Math.round(Number(b.dailyGoal) || 0)));
   await db.run('UPDATE users SET prefs = ? WHERE id = ?', JSON.stringify(p), req.user.id);
   res.json(p);
 });
@@ -104,7 +101,7 @@ async function storeRecoveryCodes(userId) {
 accountRouter.post('/totp/setup', async (req, res) => {
   if (req.user.hasTotp) throw httpError(409, 'Two-factor authentication is already enabled');
   const secret = newSecret();
-  const url = otpauthUrl(secret, req.user.email, (await branding()).name);
+  const url = otpauthUrl(secret, req.user.email, 'Flipp');
   const qr = qrcode(0, 'M');
   qr.addData(url);
   qr.make();
@@ -156,7 +153,7 @@ accountRouter.post('/passkeys/options', async (req, res) => {
   const { rpID } = rp(req);
   const existing = await db.all('SELECT id, transports FROM passkeys WHERE user_id = ?', req.user.id);
   const options = await generateRegistrationOptions({
-    rpName: (await branding()).name, rpID, userName: req.user.email, userDisplayName: req.user.name || req.user.email,
+    rpName: 'Flipp', rpID, userName: req.user.email, userDisplayName: req.user.name || req.user.email,
     userID: Buffer.from(`flipp-user-${req.user.id}`), attestationType: 'none',
     excludeCredentials: existing.map((p) => ({ id: p.id, transports: p.transports ? p.transports.split(',') : undefined })),
     authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
@@ -197,9 +194,6 @@ accountRouter.delete('/passkeys/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- Quota usage ----------
-accountRouter.get('/usage', async (req, res) => res.json({ usage: await usage(req.user.id), limits: await limitsFor(req.user.id) }));
-
 // ---------- Data export (everything the user owns or created) ----------
 accountRouter.get('/export', async (req, res) => {
   const uid = req.user.id;
@@ -217,9 +211,7 @@ accountRouter.get('/export', async (req, res) => {
     reviews: await db.all('SELECT id, card_id, variant, rating, state, was_new, ts FROM reviews WHERE user_id = ?', uid),
     stars: await db.all('SELECT card_id FROM stars WHERE user_id = ?', uid),
     course_prefs: await db.all('SELECT course_id, prefs FROM course_prefs WHERE user_id = ?', uid),
-    match_scores: await db.all('SELECT set_id, ms, created_at FROM match_scores WHERE user_id = ?', uid),
-    activity: await db.all('SELECT day, xp, stats, frozen FROM activity WHERE user_id = ?', uid),
-    groups: await db.all('SELECT g.id, g.name, gm.role, gm.joined_at FROM group_members gm JOIN study_groups g ON g.id = gm.group_id WHERE gm.user_id = ?', uid),
+    streak_days: await db.all('SELECT day, frozen FROM streak_days WHERE user_id = ?', uid),
     passkeys: await db.all('SELECT name, created_at, last_used FROM passkeys WHERE user_id = ?', uid),
   };
   const files = await db.all('SELECT name FROM uploads WHERE user_id = ?', uid);

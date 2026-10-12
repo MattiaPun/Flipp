@@ -1,23 +1,21 @@
-// Instance administration: users & roles, quotas, registration/security settings, invites, audit log,
-// storage cleanup, branding and the public-library publication queue.
+// Instance administration: users & roles, registration/security settings, invites, audit log,
+// storage cleanup and backups.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
-import { db, getSetting, setSetting, getJsonSetting, DATA_DIR, BACKUP_DIR, isPg } from '../db.js';
+import { db, getSetting, setSetting, DATA_DIR, BACKUP_DIR, isPg } from '../db.js';
 import { createBackup, listBackups, getSchedule, setSchedule, backupPath, restoreBackup, endMaintenance } from '../backup.js';
-import { httpError, id, now, str, email as emailField, password as passwordField, json } from '../util.js';
+import { httpError, id, now, str, email as emailField, password as passwordField } from '../util.js';
 import { requireAdmin, registrationOpen, hashPassword, baseUrl } from '../auth.js';
 import { audit } from '../audit.js';
-import { cleanQuota, usage } from '../quota.js';
 import { scanUploads, cleanupOrphans } from '../storage.js';
-import { branding, saveBranding } from '../branding.js';
 import { mailEnabled, sendMail } from '../mailer.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
 
-const ROLES = ['user', 'teacher', 'admin'];
+const ROLES = ['user', 'admin'];
 
 adminRouter.get('/overview', async (_req, res) => {
   const count = async (sql) => Number((await db.get(sql)).n);
@@ -32,20 +30,19 @@ adminRouter.get('/overview', async (_req, res) => {
     dbBytes: !isPg && fs.existsSync(dbFile) ? fs.statSync(dbFile).size : null,
     database: isPg ? 'postgres' : 'sqlite',
     mail: mailEnabled(),
-    pendingPublish: await count("SELECT COUNT(*) AS n FROM courses WHERE publish_status = 'pending'"),
   });
 });
 
 // ---------- Users ----------
 adminRouter.get('/users', async (_req, res) => {
-  const users = await db.all(`SELECT id, email, name, role, created_at, quota, oidc_sub IS NOT NULL AS sso, totp_secret IS NOT NULL AS totp,
+  const users = await db.all(`SELECT id, email, name, role, created_at, oidc_sub IS NOT NULL AS sso, totp_secret IS NOT NULL AS totp,
     password_hash IS NOT NULL AS has_password, email_verified,
     (SELECT COUNT(*) FROM courses c WHERE c.owner_id = users.id) AS courses,
     (SELECT MAX(last_seen) FROM sessions s WHERE s.user_id = users.id) AS last_seen,
     (SELECT COUNT(*) FROM passkeys pk WHERE pk.user_id = users.id) AS passkeys,
     (SELECT COALESCE(SUM(size), 0) FROM uploads up WHERE up.user_id = users.id) AS storage
     FROM users ORDER BY id`);
-  res.json(users.map((u) => ({ ...u, quota: json(u.quota, null), sso: !!u.sso, totp: !!u.totp, has_password: !!u.has_password, storage: Number(u.storage) })));
+  res.json(users.map((u) => ({ ...u, sso: !!u.sso, totp: !!u.totp, has_password: !!u.has_password, storage: Number(u.storage) })));
 });
 
 adminRouter.post('/users', async (req, res) => {
@@ -67,11 +64,6 @@ adminRouter.put('/users/:id', async (req, res) => {
     if (!ROLES.includes(req.body.role)) throw httpError(400, 'Unknown role');
     await db.run('UPDATE users SET role = ? WHERE id = ?', req.body.role, uid);
     await audit(req, 'admin.role_changed', { target: u.email, details: { from: u.role, to: req.body.role } });
-  }
-  if (req.body.quota !== undefined) {
-    const q = req.body.quota === null ? null : JSON.stringify(Object.fromEntries(Object.entries(req.body.quota).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, cleanQuota({ [k]: v })[k]])));
-    await db.run('UPDATE users SET quota = ? WHERE id = ?', q, uid);
-    await audit(req, 'admin.quota_changed', { target: u.email, details: { quota: req.body.quota } });
   }
   res.json({ ok: true });
 });
@@ -111,7 +103,6 @@ adminRouter.get('/settings', async (_req, res) => {
     allowRegistration: await registrationOpen(),
     require2faAdmins: (await getSetting('require_2fa_admins')) === 'true',
     requireEmailVerification: (await getSetting('require_email_verification')) === 'true',
-    quotaDefaults: cleanQuota(await getJsonSetting('quota_defaults', {})),
     mail: mailEnabled(),
     invites: await db.all('SELECT i.code, i.expires_at, u.email AS used_by_email FROM invites i LEFT JOIN users u ON u.id = i.used_by ORDER BY i.expires_at DESC LIMIT 50'),
   });
@@ -129,7 +120,6 @@ adminRouter.put('/settings', async (req, res) => {
     if (b.requireEmailVerification && !mailEnabled()) throw httpError(400, 'Configure SMTP_URL first');
     await setSetting('require_email_verification', b.requireEmailVerification ? 'true' : 'false'); changed.requireEmailVerification = !!b.requireEmailVerification;
   }
-  if (b.quotaDefaults !== undefined) { await setSetting('quota_defaults', JSON.stringify(cleanQuota(b.quotaDefaults))); changed.quotaDefaults = cleanQuota(b.quotaDefaults); }
   await audit(req, 'admin.settings_changed', { details: changed });
   res.json({ ok: true });
 });
@@ -142,8 +132,7 @@ adminRouter.post('/invites', async (req, res) => {
   let emailed = false;
   if (req.body?.email) {
     const to = emailField(req.body.email);
-    const name = (await branding()).name;
-    await sendMail({ to, subject: `You're invited to ${name}`, text: `${req.user.name} invited you to ${name}.\n\nCreate your account here (valid for 7 days):\n\n${link}` });
+    await sendMail({ to, subject: "You're invited to Flipp", text: `${req.user.name} invited you to Flipp.\n\nCreate your account here (valid for 7 days):\n\n${link}` });
     emailed = true;
   }
   await audit(req, 'admin.invite_created', { details: { emailed, to: req.body?.email || undefined } });
@@ -176,36 +165,6 @@ adminRouter.post('/storage/cleanup', async (req, res) => {
   const r = await cleanupOrphans();
   await audit(req, 'admin.storage_cleanup', { details: r });
   res.json(r);
-});
-adminRouter.get('/users/:id/usage', async (req, res) => res.json(await usage(id(req.params.id))));
-
-// ---------- Branding ----------
-adminRouter.put('/branding', async (req, res) => {
-  const b = await saveBranding(req.body || {});
-  await audit(req, 'admin.branding_changed', { details: { name: b.name } });
-  res.json(b);
-});
-
-// ---------- Public library moderation ----------
-adminRouter.get('/courses', async (req, res) => {
-  const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
-  res.json(await db.all(`SELECT c.id, c.title, c.icon, c.description, c.publish_status, c.featured, c.visibility, c.created_at, u.name AS owner_name, u.email AS owner_email,
-    (SELECT COUNT(*) FROM cards k JOIN sets s ON s.id = k.set_id WHERE s.course_id = c.id) AS card_count
-    FROM courses c JOIN users u ON u.id = c.owner_id WHERE c.publish_status = ? ORDER BY c.created_at DESC LIMIT 200`, status));
-});
-adminRouter.post('/courses/:id/review', async (req, res) => {
-  const cid = id(req.params.id);
-  const approve = !!req.body.approve;
-  const r = await db.run('UPDATE courses SET publish_status = ?, visibility = ? WHERE id = ?', approve ? 'approved' : 'rejected', approve ? 'public' : 'private', cid);
-  if (!r.changes) throw httpError(404, 'Course not found');
-  await audit(req, approve ? 'admin.course_approved' : 'admin.course_rejected', { target: `course:${cid}` });
-  res.json({ ok: true });
-});
-adminRouter.put('/courses/:id/featured', async (req, res) => {
-  const cid = id(req.params.id);
-  await db.run('UPDATE courses SET featured = ? WHERE id = ?', req.body.featured ? 1 : 0, cid);
-  await audit(req, 'admin.course_featured', { target: `course:${cid}`, details: { featured: !!req.body.featured } });
-  res.json({ ok: true });
 });
 
 // ---------- Backups ----------

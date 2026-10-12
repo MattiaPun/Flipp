@@ -3,7 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { db, UPLOAD_DIR } from './db.js';
 import { now } from './util.js';
-import { branding } from './branding.js';
 
 const IMAGE_MAX = 8 * 1048576, AUDIO_MAX = 5 * 1048576;
 
@@ -26,12 +25,11 @@ export const maxBytes = (kind) => (kind === 'audio' ? AUDIO_MAX : IMAGE_MAX);
 
 const REF = /\/uploads\/([a-f0-9]{32}\.[a-z0-9]{3,4})/g;
 
-// Every upload name referenced anywhere (card fields, markdown, branding).
+// Every upload name referenced anywhere (card fields, markdown).
 async function referenced() {
   const refs = new Set();
   const add = (text) => { for (const m of String(text || '').matchAll(REF)) refs.add(m[1]); };
   for (const c of await db.all('SELECT image, audio, front, back, notes, mnemonic, example FROM cards')) Object.values(c).forEach(add);
-  add((await branding()).logo);
   return refs;
 }
 

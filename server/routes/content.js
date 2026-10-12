@@ -4,7 +4,6 @@ import { db } from '../db.js';
 import { httpError, id, now, str, image, audio, tagList, json, startOfDay, email as emailField } from '../util.js';
 import { loadCourse, loadSet, loadCard, LISTED, listedParams, READABLE, readableParams, isAdmin } from '../access.js';
 import { audit } from '../audit.js';
-import { checkQuota } from '../quota.js';
 import { DUE, variantsOf, courseConfig, userTz } from '../study-core.js';
 import { normalizeConfig } from '../../public/srs.js';
 import { toCSV, clozeNumbers, plain } from '../../public/lib.js';
@@ -57,11 +56,9 @@ contentRouter.get('/courses', async (req, res) => {
 });
 
 contentRouter.post('/courses', async (req, res) => {
-  await checkQuota(req.user.id, 'courses');
   const c = courseInput(req.body, req.user);
-  const vis = req.body.visibility === 'public' && isAdmin(req.user) ? 'public' : 'private';
-  const row = await db.get('INSERT INTO courses (owner_id, title, description, icon, tags, lang, visibility, publish_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
-    req.user.id, c.title, c.description, c.icon, c.tags, c.lang, vis, vis === 'public' ? 'approved' : 'none', now());
+  const row = await db.get('INSERT INTO courses (owner_id, title, description, icon, tags, lang, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    req.user.id, c.title, c.description, c.icon, c.tags, c.lang, now());
   res.json(row);
 });
 
@@ -81,14 +78,8 @@ contentRouter.get('/courses/:id', async (req, res) => {
 contentRouter.put('/courses/:id', async (req, res) => {
   const old = await loadCourse(req, req.params.id, 'edit');
   const c = courseInput(req.body, req.user, old);
-  let visibility = old.visibility, status = old.publish_status;
-  if (isAdmin(req.user) && (req.body.visibility === 'public' || req.body.visibility === 'private')) {
-    visibility = req.body.visibility;
-    status = visibility === 'public' ? 'approved' : 'none';
-  }
-  await db.run('UPDATE courses SET title = ?, description = ?, icon = ?, tags = ?, lang = ?, visibility = ?, publish_status = ? WHERE id = ?',
-    c.title, c.description, c.icon, c.tags, c.lang, visibility, status, old.id);
-  if (visibility !== old.visibility) await audit(req, 'course.visibility', { target: `course:${old.id}`, details: { visibility } });
+  await db.run('UPDATE courses SET title = ?, description = ?, icon = ?, tags = ?, lang = ? WHERE id = ?',
+    c.title, c.description, c.icon, c.tags, c.lang, old.id);
   res.json({ ok: true });
 });
 
@@ -99,23 +90,13 @@ contentRouter.delete('/courses/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Owners ask for publication; admins approve in the admin panel. Owners can always withdraw.
+// Owners share a course with everyone on the instance (the library) or take it back.
 contentRouter.post('/courses/:id/publish', async (req, res) => {
   const c = await loadCourse(req, req.params.id, 'manage');
-  if (req.body.publish === false) {
-    await db.run("UPDATE courses SET visibility = 'private', publish_status = 'none' WHERE id = ?", c.id);
-    await audit(req, 'course.unpublished', { target: `course:${c.id}` });
-    return res.json({ status: 'none' });
-  }
-  if (isAdmin(req.user)) {
-    await db.run("UPDATE courses SET visibility = 'public', publish_status = 'approved' WHERE id = ?", c.id);
-    await audit(req, 'course.published', { target: `course:${c.id}` });
-    return res.json({ status: 'approved' });
-  }
-  if (c.visibility === 'public') return res.json({ status: 'approved' });
-  await db.run("UPDATE courses SET publish_status = 'pending' WHERE id = ?", c.id);
-  await audit(req, 'course.publish_requested', { target: `course:${c.id}` });
-  res.json({ status: 'pending' });
+  const visibility = req.body.publish === false ? 'private' : 'public';
+  await db.run('UPDATE courses SET visibility = ? WHERE id = ?', visibility, c.id);
+  await audit(req, visibility === 'public' ? 'course.published' : 'course.unpublished', { target: `course:${c.id}` });
+  res.json({ visibility });
 });
 
 // Library: keep a public course on your home screen.
@@ -138,9 +119,6 @@ contentRouter.put('/courses/:id/prefs', async (req, res) => {
 // Clone any readable course into your own private copy (no progress is copied).
 contentRouter.post('/courses/:id/clone', async (req, res) => {
   const src = await loadCourse(req, req.params.id);
-  const cardCount = Number((await db.get('SELECT COUNT(*) AS n FROM cards k JOIN sets s ON s.id = k.set_id WHERE s.course_id = ?', src.id)).n);
-  await checkQuota(req.user.id, 'courses');
-  await checkQuota(req.user.id, 'cards', cardCount);
   const sets = await db.all('SELECT * FROM sets WHERE course_id = ? ORDER BY created_at, id', src.id);
   const cards = await db.all('SELECT k.* FROM cards k JOIN sets s ON s.id = k.set_id WHERE s.course_id = ? ORDER BY k.position, k.id', src.id);
   const newId = await db.tx(async (t) => {
@@ -259,7 +237,6 @@ contentRouter.post('/sets/:id/cards', async (req, res) => {
     const seen = new Set(existing.keys());
     rows = rows.filter((r) => { const k = dupKey(r.front); if (seen.has(k)) { skipped++; return false; } seen.add(k); return true; });
   }
-  await checkQuota(s.course.owner_id, 'cards', rows.length);
   let pos = Number((await db.get('SELECT MAX(position) AS m FROM cards WHERE set_id = ?', s.id))?.m ?? -1);
   const ids = await db.tx(async (t) => {
     const out = [];
@@ -325,14 +302,7 @@ contentRouter.post('/cards/bulk', async (req, res) => {
   const cards = [];
   for (const cid of ids) cards.push(await loadCard(req, cid, level)); // ponytail: N access checks; fine for UI-sized selections
   let target;
-  if (action === 'move' || action === 'copy') {
-    target = await loadSet(req, req.body.setId, 'edit');
-    if (action === 'copy') await checkQuota(target.course.owner_id, 'cards', cards.length);
-    else {
-      const otherOwners = cards.filter((c) => c.set.course.owner_id !== target.course.owner_id).length;
-      if (otherOwners) await checkQuota(target.course.owner_id, 'cards', otherOwners);
-    }
-  }
+  if (action === 'move' || action === 'copy') target = await loadSet(req, req.body.setId, 'edit');
   const tag = action === 'tag' || action === 'untag' ? tagList(req.body.tag, 1)[0] : null;
   if ((action === 'tag' || action === 'untag') && !tag) throw httpError(400, 'Enter a tag');
   await db.tx(async (t) => {
@@ -359,18 +329,18 @@ contentRouter.post('/cards/bulk', async (req, res) => {
   res.json({ ok: true, count: cards.length });
 });
 
-// ---------- Public library ----------
+// ---------- Library: courses shared with the whole instance ----------
 contentRouter.get('/library', async (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase().slice(0, 100);
   const like = `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`;
-  const rows = await db.all(`SELECT c.id, c.title, c.icon, c.description, c.tags, c.featured, c.visibility, c.owner_id, c.created_at, u.name AS owner_name,
+  const rows = await db.all(`SELECT c.id, c.title, c.icon, c.description, c.tags, c.visibility, c.owner_id, c.created_at, u.name AS owner_name,
       (SELECT COUNT(*) FROM sets s WHERE s.course_id = c.id) AS set_count,
       (SELECT COUNT(*) FROM cards k JOIN sets s ON s.id = k.set_id WHERE s.course_id = c.id) AS card_count,
       (SELECT COUNT(*) FROM saved_courses sc WHERE sc.course_id = c.id) AS learners,
       (SELECT 1 FROM saved_courses sc WHERE sc.course_id = c.id AND sc.user_id = ?) AS saved
     FROM courses c JOIN users u ON u.id = c.owner_id
     WHERE c.visibility = 'public' AND (? = '' OR LOWER(c.title) LIKE ? ESCAPE '\\' OR LOWER(c.tags) LIKE ? ESCAPE '\\' OR LOWER(c.description) LIKE ? ESCAPE '\\')
-    ORDER BY c.featured DESC, learners DESC, c.created_at DESC LIMIT 200`, req.user.id, q, like, like, like);
+    ORDER BY learners DESC, c.created_at DESC LIMIT 200`, req.user.id, q, like, like, like);
   res.json(rows.map((r) => ({ ...r, owned: r.owner_id === req.user.id, saved: !!r.saved })));
 });
 

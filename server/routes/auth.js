@@ -11,7 +11,6 @@ import {
 import { audit } from '../audit.js';
 import { mailEnabled, sendMail } from '../mailer.js';
 import { verifyTotp } from '../totp.js';
-import { branding } from '../branding.js';
 
 export const authRouter = Router();
 const limited = rateLimit(10, 60_000);
@@ -50,9 +49,8 @@ async function consumeToken(token, kind) {
 
 async function sendVerification(req, user) {
   const token = await issueToken(user.id, 'verify', 24 * 3_600_000);
-  const name = (await branding()).name;
-  await sendMail({ to: user.email, subject: `Confirm your email for ${name}`,
-    text: `Hi ${user.name || ''},\n\nConfirm your email address to start using ${name}:\n\n${baseUrl(req)}/#/verify?token=${token}\n\nThis link expires in 24 hours. If you didn't sign up, ignore this email.` });
+  await sendMail({ to: user.email, subject: 'Confirm your email for Flipp',
+    text: `Hi ${user.name || ''},\n\nConfirm your email address to start using Flipp:\n\n${baseUrl(req)}/#/verify?token=${token}\n\nThis link expires in 24 hours. If you didn't sign up, ignore this email.` });
 }
 
 authRouter.get('/me', async (req, res) => {
@@ -62,7 +60,6 @@ authRouter.get('/me', async (req, res) => {
     allowRegistration: await registrationOpen(),
     oidc: oidc ? { name: oidc.name } : null,
     mail: mailEnabled(),
-    branding: await branding(),
   });
 });
 
@@ -172,8 +169,7 @@ authRouter.post('/forgot', rateLimit(5, 60_000), async (req, res) => {
   const user = await db.get('SELECT id, email, name FROM users WHERE email = ?', e);
   if (user) {
     const token = await issueToken(user.id, 'reset', 3_600_000);
-    const name = (await branding()).name;
-    sendMail({ to: user.email, subject: `Reset your ${name} password`,
+    sendMail({ to: user.email, subject: 'Reset your Flipp password',
       text: `Someone (hopefully you) asked to reset the password for ${user.email}.\n\n${baseUrl(req)}/#/reset?token=${token}\n\nThis link expires in 1 hour. If you didn't ask for this, ignore this email.` })
       .catch((err) => console.error('[flipp] reset mail failed', err.message));
     await audit(req, 'auth.password_reset_requested', { user });

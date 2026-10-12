@@ -37,7 +37,7 @@ Node version: ≥ 22.13, because the app uses the built-in `node:sqlite`. Docker
 ## Security rules (non-negotiable)
 
 - **SQL:** parameterized only, with `?` placeholders. Never interpolate user input into SQL.
-- **Every content route** loads its resource through `loadCourse`, `loadSet`, or `loadCard` (`server/access.js`) with the level it needs: `'read'`, `'edit'` (owner, co-editor, admin) or `'manage'` (owner, admin: delete, share, publish). Inaccessible resources return 404, not 403, so their existence is not leaked. Group routes use `loadGroup` in `routes/groups.js`.
+- **Every content route** loads its resource through `loadCourse`, `loadSet`, or `loadCard` (`server/access.js`) with the level it needs: `'read'`, `'edit'` (owner, co-editor, admin) or `'manage'` (owner, admin: delete, share, publish). Inaccessible resources return 404, not 403, so their existence is not leaked.
 - **Security-relevant actions are audited** with `audit(req, 'area.action', …)` (`server/audit.js`).
 - **Validate request fields** with the helpers in `server/util.js` (`str`, `id`, `int`, `email`, `image`, `audio`, `tagList`) before use. Enforce length limits. Values interpolated into SQL (e.g. `IN (…)` lists) must be integers from our own DB or `Number()`-checked.
 - **CSRF:** state-changing requests need `X-Flipp: 1` plus a same-origin request. The frontend `api()` helper sends this header. Never add CORS headers.
