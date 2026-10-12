@@ -210,7 +210,7 @@ async function runRestore(req, res, file, label) {
   await audit(req, 'backup.restored', { target: label });
   res.json({ ok: true, restarting: true });
   // Secrets, caches and the setup state were replaced: restart cleanly (Docker's restart policy brings us back).
-  console.log('[flipp] Restore complete — restarting.');
+  console.log('[flipp] Restore complete, restarting.');
   if (process.env.FLIPP_NO_LISTEN === '1') endMaintenance(); // embedded (tests): no restart
   else setTimeout(() => process.exit(0), 500);
 }

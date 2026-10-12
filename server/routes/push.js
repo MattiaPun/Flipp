@@ -61,7 +61,7 @@ pushRouter.post('/push/test', async (req, res) => {
   const subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', req.user.id);
   if (!subs.length) throw httpError(400, 'No device is subscribed yet');
   let sent = 0;
-  for (const s of subs) if (await send(s, { title: 'Flipp', body: 'Reminders are working 🎉', url: '/#/' })) sent++;
+  for (const s of subs) if (await send(s, { title: 'Flipp', body: 'Test notification. Reminders are on.', url: '/#/' })) sent++;
   res.json({ sent });
 });
 

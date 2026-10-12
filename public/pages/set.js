@@ -311,10 +311,10 @@ export function CardEditor({ card, onSave, onCancel }) {
       </div>
       <label class="check small"><input type="checkbox" checked=${preview} onChange=${(e) => { setPreview(e.target.checked); prefs.set('editorPreview', e.target.checked); }} /> Live preview</label>
     </div>
-    ${cloze && html`<p class="small faint">Wrap answers in <code>{{c1::…}}</code> — each number becomes its own card. Add a hint with <code>{{c1::answer::hint}}</code>.</p>`}
+    ${cloze && html`<p class="small faint">Wrap answers in <code>{{c1::…}}</code>. Each number becomes its own card. Add a hint with <code>{{c1::answer::hint}}</code>.</p>`}
     <div class="row" style="align-items:stretch">
       <${MdField} label=${cloze ? 'Text' : 'Front · term'} value=${c.front} onChange=${set('front')} preview=${preview} cloze=${cloze} required autoFocus=${!card}
-        placeholder=${cloze ? 'The capital of Sweden is {{c1::Stockholm}}.' : 'Markdown, `code`, $LaTeX$ — paste or drop images'} />
+        placeholder=${cloze ? 'The capital of Sweden is {{c1::Stockholm}}.' : 'Markdown, `code` and $LaTeX$. Paste or drop images.'} />
       <${MdField} label=${cloze ? 'Extra (shown with the answer)' : 'Back · definition'} value=${c.back} onChange=${set('back')} preview=${preview} />
     </div>
     ${c.image && html`<div class="row"><img src=${c.image} style="max-height:80px;border-radius:8px" alt="" /><button type="button" class="btn sm ghost" onClick=${() => set('image')(null)}>Remove image</button></div>`}

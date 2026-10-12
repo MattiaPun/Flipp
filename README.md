@@ -5,9 +5,9 @@
 >
 > Flipp was written mostly by an AI coding assistant (Claude), with me steering, testing and clicking around. It works well for me. It has tests, and I tried to follow sensible security practice.
 >
-> But it is a hobby project, **not** a professionally audited product:
-> - **No guarantees, no SLA, no roadmap promises.** Bugs may exist, and features may change or break.
-> - **Run it at your own risk.** Keep backups of `./data`.
+> But it is a hobby project, not a professionally audited product:
+> - No guarantees, no SLA, no roadmap promises. Bugs may exist, and features may change or break.
+> - Run it at your own risk. Keep backups of `./data`.
 > - If you put it on the public internet, put it behind a reverse proxy with TLS and finish the setup wizard immediately.
 >
 > If Flipp ever gains real traction, and enough people want a proper, non-vibe-coded version, I'll build one. Star the repo or open an issue to let me know.
@@ -18,35 +18,46 @@ Flipp is a minimal flashcard app with spaced repetition that you host yourself: 
 
 ## Features
 
-**Learning**
-- **Spaced repetition** with the FSRS-6 algorithm, Anki-style learning steps, interval previews on the rating buttons, and a per-user optimizer that fits the scheduler to your own review history.
-- **Weak cards come back.** A card you rate *Again* or *Hard* returns 3–5 cards later and leaves the session only after two correct answers. Due cards with many lapses come first.
-- **Study modes:** Learn (spaced repetition), Flashcards (3D flip, swipe left/right), Write (typo- and accent-tolerant, letter hints, character diff, tap-to-insert keys for letters like å, ä and ö), Multiple choice, and Cram (no scheduling).
-- **Streaks** with streak freezes: one is earned every 7 days of streak (hold up to 2), and one covers each missed day automatically.
-- **Card types:** basic (optionally also studied in reverse) and cloze deletions (`{{c1::answer::hint}}`). Markdown, code, LaTeX, images, recorded or uploaded audio, text-to-speech, plus mnemonic, example and notes fields.
-- **Per-course settings:** target retention, daily new/review limits, learning steps, and automatic leech detection (cards you keep forgetting are suspended or flagged).
-- Session length (cards or minutes), starred-only, direction, bury and suspend, statistics (heatmap, 30-day forecast, retention, hardest cards), daily push reminders, and offline studying that syncs later.
+### Studying
 
-**Content**
-- Courses → sets → cards. Editor with formatting toolbar, live preview, paste or drop images.
-- Import Quizlet/TSV/CSV, Anki `.apkg` decks (with media and review history), and Flipp course exports. Export CSV or a full course archive.
-- Duplicate detection, bulk select (move, copy, tag, star, suspend, delete), drag-to-reorder, card tags (study by tag), ⌘K search across everything, copy any course.
+- Spaced repetition with FSRS-6 and Anki-style learning steps. The rating buttons show the next interval. An optional per-user optimizer fits the scheduler to your own review history.
+- A card you rate Again or Hard comes back 3 to 5 cards later and leaves the session after two correct answers. Due cards with many lapses come first.
+- Study modes: Learn (spaced repetition), Flashcards (flip or swipe), Write (tolerates typos and missing accents, with hints and a character diff), Multiple choice, and Cram (no scheduling).
+- Card types: basic, basic with reverse, and cloze (`{{c1::answer::hint}}`). Cards can hold Markdown, code, LaTeX, images and audio, plus mnemonic, example and notes fields. Text-to-speech uses the browser's voices.
+- Per-course settings for target retention, daily limits, learning steps and leech handling (suspend or tag cards you keep forgetting).
+- Session length in cards or minutes, starred cards only, study direction, bury and suspend.
+- Streaks. Every 7 days of streak earns a streak freeze (you can hold 2), which covers a missed day.
+- Statistics: heatmap, 30-day forecast, retention and hardest cards.
+- Daily push reminders, and offline study that syncs when you're back online.
 
-**Sharing & teaching**
+### Content
+
+- Courses contain sets, sets contain cards. The editor has a formatting toolbar and live preview, and you can paste or drop images.
+- Import from Quizlet, TSV or CSV, Anki `.apkg` (with media and review history) and Flipp course exports. Export a set as CSV or a whole course as an archive.
+- Duplicate detection, bulk actions (move, copy, tag, star, suspend, delete), drag to reorder, tags, and ⌘K search.
+
+### Sharing
+
 - Share a course with specific people as viewers or co-editors.
-- A library: owners can share a course with everyone on the instance; others add it to their courses or make their own copy.
+- Put a course in the library to share it with everyone on the instance. Other users can add it to their courses or make their own copy.
 
-**Accounts & security**
-- Local accounts, invite links, OpenID Connect (Authentik, Authelia, Keycloak, Google, …), passkeys, authenticator-app 2FA with recovery codes, password reset and email confirmation over SMTP.
-- Roles: user, admin. Admins can require 2FA for every admin.
-- Signed-in device list with remote sign-out, full personal data export, self-service account deletion.
+### Accounts
 
-**Administration**
-- Users and roles; registration, invites and email settings; audit log; unused-upload cleanup.
-- One-click and scheduled backups (database + uploads in one portable `.tar.gz`) and full restore. Backups work across SQLite and PostgreSQL.
+- Local accounts, invite links, OpenID Connect (Authentik, Authelia, Keycloak, Google and others), passkeys, and authenticator-app 2FA with recovery codes.
+- Password reset and email confirmation over SMTP.
+- Two roles, user and admin. Admins can require 2FA for all admins.
+- A list of signed-in devices with remote sign-out, a full export of your data, and account deletion.
 
-**App**
-- Installable PWA for iOS, iPadOS and Android, dark/light themes, safe-area support. Keyboard: `Space` flip, `1`–`4` or `←`/`→` rate, `Z` undo, `⌘K` search.
+### Administration
+
+- Manage users, roles, sign-ups and invites, and read the audit log.
+- Back up the database and uploads to one `.tar.gz`, by hand or on a schedule, and restore from it. Backups move between SQLite and PostgreSQL.
+- Unused uploads are cleaned up every night.
+
+### App
+
+- Installable as a PWA on iOS, iPadOS and Android, with dark and light themes.
+- Keyboard: `Space` flips, `1` to `4` or the arrow keys rate, `Z` undoes, `⌘K` searches.
 
 ## Quick start
 
@@ -68,17 +79,15 @@ Everything is stored in `./data`:
 
 ### Initial admin account
 
-On first boot there is no administrator. Flipp prints a **setup token** to the logs (or uses `SETUP_TOKEN` if you set it), and only someone with that token can create the admin account. With OIDC configured, an SSO sign-in that carries the token can complete setup instead.
+On first boot there is no administrator. Flipp prints a setup token to the logs (or uses `SETUP_TOKEN` if you set it), and only someone with that token can create the admin account. With OIDC configured, an SSO sign-in that carries the token can complete setup instead.
 
-After setup, the **Admin** page lets you manage users and roles, sign-ups and invites, storage, backups and the audit log.
+After setup, the Admin page lets you manage users and roles, sign-ups and invites, storage, backups and the audit log.
 
-Roles:
-- **User:** creates and studies their own courses, shares them with people or the whole instance.
-- **Admin:** everything, plus instance administration. Admins can edit any course.
+Users create, study and share their own courses. Admins can also edit any course and manage the instance.
 
 ## Demo data
 
-Want something to click through? After the setup wizard, fill the instance with demo content:
+To try Flipp with sample content, run the seed script after the setup wizard:
 
 ```bash
 docker compose exec -u node flipp node --disable-warning=ExperimentalWarning server/seed.js   # or: npm run seed
@@ -99,12 +108,12 @@ All settings are environment variables. See [.env.example](.env.example) for the
 | `JWT_SECRET` | auto-generated | Server secret; also encrypts stored 2FA secrets. Generate with `openssl rand -hex 32`. |
 | `SETUP_TOKEN` | auto-generated, printed in logs | Token required to create the first admin |
 | `ALLOW_REGISTRATION` | `true` | Default for public sign-up. Admins can change it at runtime. |
-| `SMTP_URL`, `MAIL_FROM` | — | Enable password reset, emailed invites and email confirmation |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | — | Enable SSO |
+| `SMTP_URL`, `MAIL_FROM` | none | Enable password reset, emailed invites and email confirmation |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | none | Enable SSO |
 | `OIDC_NAME` | `SSO` | Label on the login button |
 | `OIDC_TOKEN_AUTH_METHOD` | `client_secret_basic` | Or `client_secret_post` |
 | `OIDC_ALLOW_SIGNUP` | `true` | Create accounts for new SSO users |
-| `OIDC_ADMIN_GROUP` | — | Members of this `groups` claim value become admins |
+| `OIDC_ADMIN_GROUP` | none | Members of this `groups` claim value become admins |
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Express trust-proxy setting |
 | `AUDIT_RETENTION_DAYS` | `365` | How long audit entries are kept |
 | `MAX_IMPORT_MB`, `MAX_RESTORE_MB` | `300`, `4096` | Upload limits for imports and backup restores |
@@ -113,9 +122,9 @@ All settings are environment variables. See [.env.example](.env.example) for the
 
 Create an OAuth2/OIDC client at your identity provider:
 
-- **Type**: confidential, authorization-code flow (Flipp uses PKCE)
-- **Redirect URI**: `https://<your PUBLIC_URL>/api/auth/oidc/callback`
-- **Scopes**: `openid email profile`. Add `groups` if you use `OIDC_ADMIN_GROUP` and your provider needs it.
+- Type: confidential, authorization-code flow (Flipp uses PKCE)
+- Redirect URI: `https://<your PUBLIC_URL>/api/auth/oidc/callback`
+- Scopes: `openid email profile`. Add `groups` if you use `OIDC_ADMIN_GROUP` and your provider needs it.
 
 Then set `OIDC_ISSUER` to the issuer URL. Flipp reads `/.well-known/openid-configuration` from that URL. Examples:
 
@@ -129,7 +138,7 @@ Then set `OIDC_ISSUER` to the issuer URL. Flipp reads `/.well-known/openid-confi
 How SSO users are matched to accounts:
 
 1. If an SSO identity has been seen before, Flipp signs in its existing account.
-2. If the provider marks the email as **verified** and it matches an existing local account, Flipp links the two.
+2. If the provider marks the email as verified and it matches an existing local account, Flipp links the two.
 3. Otherwise Flipp creates a new account, unless `OIDC_ALLOW_SIGNUP=false`.
 
 To make SSO the only way new users can join, set `ALLOW_REGISTRATION=false`. SSO users are exempt from the "require 2FA for admins" setting, since their identity provider handles that.
@@ -140,7 +149,7 @@ Both need HTTPS (except on `localhost`) and a correct `PUBLIC_URL`: passkeys are
 
 ### Backups
 
-Admin → Backups creates a `.tar.gz` with every table and every uploaded file, and can run daily at a chosen hour, keeping the newest N. Restoring replaces **everything** on the instance, signs everyone out, and restarts the server (the compose file's restart policy brings it back). Keep the same `JWT_SECRET` when restoring on another server, or two-factor secrets can't be decrypted. A backup can only be restored by a Flipp version with the same database schema.
+Admin → Backups creates a `.tar.gz` with every table and every uploaded file, and can run daily at a chosen hour, keeping the newest N. Restoring replaces everything on the instance, signs everyone out, and restarts the server (the compose file's restart policy brings it back). Keep the same `JWT_SECRET` when restoring on another server, or two-factor secrets can't be decrypted. A backup can only be restored by a Flipp version with the same database schema.
 
 For off-site copies, mount `/data/backups` elsewhere or sync it with your usual backup tool.
 
@@ -148,7 +157,7 @@ For off-site copies, mount `/data/backups` elsewhere or sync it with your usual 
 
 Flipp serves plain HTTP on port 3000. Terminate TLS at your reverse proxy, and set `PUBLIC_URL` to the external `https://` URL. When `PUBLIC_URL` uses https, session cookies get the `Secure` flag, and the CSRF origin check compares against this URL. The proxy must pass the `Host` and `X-Forwarded-Proto` headers.
 
-**Caddy**
+Caddy:
 
 ```caddy
 flipp.example.com {
@@ -156,7 +165,7 @@ flipp.example.com {
 }
 ```
 
-**nginx**
+nginx:
 
 ```nginx
 server {
@@ -172,7 +181,7 @@ server {
 }
 ```
 
-**Traefik** (labels on the `flipp` service)
+Traefik, as labels on the `flipp` service:
 
 ```yaml
 labels:
@@ -187,17 +196,17 @@ If your proxy is not on loopback or a private network, set `TRUST_PROXY` to its 
 
 ## Security notes
 
-- **Sessions.** The session token is a random 256-bit value in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` behind https). The database stores only an HMAC of the token. Sessions expire after 30 days, show up under Settings → Signed-in devices, and end on password change or reset.
-- **Passwords** are hashed with scrypt. **2FA secrets** are encrypted at rest with AES-256-GCM; TOTP codes can't be replayed; recovery codes are single-use and stored hashed.
-- **First run** requires the setup token.
-- **CSRF.** No CORS headers are sent. Every state-changing request must come from the same origin and carry the custom `X-Flipp` header.
-- **Content Security Policy.** Scripts load only from the app itself (`script-src 'self'`): no inline scripts and no CDNs. Framing is denied.
-- **XSS.** Card content is stored as entered and sanitized with DOMPurify when rendered.
-- **Uploads.** Checked by magic bytes: PNG, JPEG, GIF, WebP images and WebM, Ogg, MP3, M4A, WAV audio. SVG and HTML are rejected. Files get random names.
-- **Access control.** Every course, set and card request is checked against ownership, sharing or library status; anything else answers 404.
-- **Rate limits.** Login, registration, setup, 2FA, password reset and SSO are rate limited per IP.
-- **Audit log** of sign-ins, failed sign-ins, security changes, admin actions, sharing and backups.
-- **SQL.** All queries are parameterized.
+- Sessions use a random 256-bit token in an `HttpOnly`, `SameSite=Lax` cookie, marked `Secure` behind https. The database stores only an HMAC of the token. Sessions last 30 days, are listed under Settings, and end when the password changes.
+- Passwords are hashed with scrypt. 2FA secrets are encrypted with AES-256-GCM. TOTP codes can't be reused, and recovery codes are stored hashed and work once.
+- Creating the first admin requires the setup token.
+- No CORS headers are sent. State-changing requests must come from the same origin and carry an `X-Flipp` header.
+- The Content Security Policy allows scripts only from the app itself (`script-src 'self'`), with no inline scripts or CDNs, and the app can't be framed.
+- Card content is stored as entered and sanitized with DOMPurify when it is shown.
+- Uploads are checked by their first bytes. Only PNG, JPEG, GIF and WebP images and WebM, Ogg, MP3, M4A and WAV audio are accepted. Files get random names.
+- Requests for a course, set or card the user can't see return 404.
+- Sign-in, registration, setup, 2FA, password reset and SSO are rate limited per IP.
+- Sign-ins, failed sign-ins, security changes, admin actions, sharing and backups go to the audit log.
+- All SQL queries are parameterized.
 
 ## Development
 

@@ -54,7 +54,7 @@ export function Leeches() {
   const act = async (id, action) => { try { await api(`/cards/${id}/schedule`, { method: 'POST', body: { action } }); list.reload(); toast(action === 'unsuspend' ? 'Back in rotation' : 'Progress reset'); } catch (e) { toast(e.message); } };
   return html`<div class="stack">
     <h1>Leeches</h1>
-    <p class="muted">Cards you've forgotten many times. They're often too long or ambiguous — rewrite or split them, add a mnemonic, then put them back.</p>
+    <p class="muted">Cards you've forgotten many times. They're often too long or ambiguous. Rewrite or split them, or add a mnemonic, then put them back.</p>
     ${list.data && !list.data.length && html`<div class="panel empty"><${Illustration} /><p class="muted">No leeches. Every card is sticking.</p></div>`}
     <div class="panel" style="padding:0">${(list.data || []).map((c) => { const s = sides(c, c.variant); return html`<div class="cardrow">
       <div><${Md} src=${s.prompt} /><div class="small faint">${c.icon} ${c.course_title} · ${c.set_title}</div></div>

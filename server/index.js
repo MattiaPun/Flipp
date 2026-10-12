@@ -56,7 +56,7 @@ app.use('/api', (req, res, next) => {
   if ((origin && origin !== self) || (site && site !== 'same-origin') || req.get('x-flipp') !== '1') return next(httpError(403, 'Cross-site request blocked'));
   next();
 });
-app.use('/api', (req, _res, next) => next(maintenance ? httpError(503, 'Restoring a backup — back in a moment') : undefined));
+app.use('/api', (req, _res, next) => next(maintenance ? httpError(503, 'Restoring a backup. Try again in a moment.') : undefined));
 app.use('/api', express.json({ limit: '2mb' }), sessionMiddleware);
 app.use('/api/auth', authRouter);
 app.use('/api', requireUser);

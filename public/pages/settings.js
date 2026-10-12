@@ -135,7 +135,7 @@ function Security({ me, reloadMe }) {
     <//>`}
     ${codes && html`<${Modal} title="Save your recovery codes" onClose=${() => setCodes(null)}>
       <div class="col">
-        <p class="small muted">Each code works once if you lose your authenticator. Store them somewhere safe — they won't be shown again.</p>
+        <p class="small muted">Each code works once if you lose your authenticator. Store them somewhere safe. They won't be shown again.</p>
         <div class="codes">${codes.map((c) => html`<code>${c}</code>`)}</div>
         <div class="row"><button class="btn" onClick=${() => navigator.clipboard?.writeText(codes.join('\n')).then(() => toast('Copied'))}>Copy</button>
           <button class="btn primary" onClick=${() => setCodes(null)}>I saved them</button></div>

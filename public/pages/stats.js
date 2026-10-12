@@ -91,7 +91,7 @@ function RetentionLine({ weeks }) {
   pts.forEach((p, i) => { if (p.y == null) return; d += `${i && pts[i - 1].y != null ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)} `; });
   const empty = !pts.some((p) => p.y != null);
   return html`<div class="chart" ref=${ref} onMouseLeave=${tip.hide}>
-    ${empty && html`<div class="chart-empty">Not enough reviews yet — retention appears once cards come back for review.</div>`}
+    ${empty && html`<div class="chart-empty">Not enough reviews yet. Retention shows up once cards come back for review.</div>`}
     <svg viewBox=${`0 0 ${W} ${H}`} width=${W} height=${H} role="img" aria-label="Share of due reviews you remembered, per week, last 26 weeks">
       ${[0, 0.5, 0.8, 1].map((v) => { const y = T + (1 - v) * (H - B - T); return html`<line x1=${L} x2=${W} y1=${y} y2=${y} class="grid" /><text x=${L - 6} y=${y + 3} class="axis" text-anchor="end">${v * 100}%</text>`; })}
       <path d=${d} class="line" />

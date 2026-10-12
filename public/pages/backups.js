@@ -16,7 +16,7 @@ export function Backups() {
   if (!d) return b.error ? html`<p class="error">${b.error.message}</p>` : null;
   return html`<div class="col">
     <div class="panel col">
-      <div class="row between"><div><b>Backups</b><div class="small muted">Everything — database and uploaded files — in one portable .tar.gz. Stored in <code>${d.dir}</code>.</div></div>
+      <div class="row between"><div><b>Backups</b><div class="small muted">The database and uploaded files in one .tar.gz. Stored in <code>${d.dir}</code>.</div></div>
         <button class="btn primary sm" onClick=${create} disabled=${cr.busy}>${cr.busy ? 'Creating…' : 'Back up now'}</button></div>
       ${cr.error && html`<p class="error">${cr.error}</p>`}
       ${d.files.length ? html`<div class="scroll-x"><table class="list"><tbody>${d.files.map((f) => html`<tr>
@@ -57,7 +57,7 @@ function RestoreDialog({ target, onClose }) {
   return html`<${Modal} title="Restore backup" onClose=${onClose}>
     <div class="col">
       <p><b>${typeof target === 'string' ? target : target.file.name}</b></p>
-      <p class="small muted">This <b>replaces everything</b> on this instance — users, courses, progress, settings and uploaded files — with the backup's contents. Everyone is signed out and the server restarts. Keep the same <code>JWT_SECRET</code> so two-factor secrets stay readable.</p>
+      <p class="small muted">This replaces all users, courses, progress, settings and uploaded files on this instance with the backup's contents. Everyone is signed out and the server restarts. Keep the same <code>JWT_SECRET</code> so two-factor secrets stay readable.</p>
       <label class="field">Type RESTORE to confirm<input class="input" value=${confirmText} onInput=${(e) => setConfirm(e.target.value)} autocomplete="off" /></label>
       ${st.error && html`<p class="error">${st.error}</p>`}
       <button class="btn danger" disabled=${confirmText !== 'RESTORE' || st.busy} onClick=${run}>${st.busy ? 'Restoring…' : 'Replace everything'}</button>

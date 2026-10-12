@@ -108,7 +108,7 @@ function Access({ me }) {
     <div class="panel col">
       <div class="section-title" style="margin:0">Invites</div>
       <form class="row" onSubmit=${makeInvite}>
-        <input class="input grow" style="width:auto" name="email" type="email" placeholder=${d.mail ? 'Email (optional — sends the invite)' : 'Email sending not configured'} disabled=${!d.mail} />
+        <input class="input grow" style="width:auto" name="email" type="email" placeholder=${d.mail ? 'Email (optional, sends the invite)' : 'Email sending not configured'} disabled=${!d.mail} />
         <button class="btn" disabled=${inv.busy}>Create invite link</button>
       </form>
       ${inv.error && html`<p class="error">${inv.error}</p>`}
@@ -130,7 +130,7 @@ function Storage() {
   if (!d) return s.error ? html`<p class="error">${s.error.message}</p>` : null;
   return html`<div class="col">
     <div class="panel row between">
-      <div><b>${d.files} files</b><div class="small muted">${d.orphans} unused (${fmtBytes(d.orphanBytes)}) — not referenced by any card for over 24 hours. Cleaned automatically every night.</div></div>
+      <div><b>${d.files} files</b><div class="small muted">${d.orphans} unused (${fmtBytes(d.orphanBytes)}): not used by any card for over 24 hours. Removed every night.</div></div>
       <button class="btn sm" onClick=${clean} disabled=${st.busy || !d.orphans}>Clean up now</button>
     </div>
     <div class="panel" style="padding:0"><table class="list"><thead><tr><th>User</th><th>Files</th><th>Storage</th></tr></thead><tbody>
